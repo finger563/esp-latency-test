@@ -21,6 +21,7 @@ def main():
     parser = argparse.ArgumentParser(description='Analyze latency data.')
     parser.add_argument('filename', type=str, help='The filename of the latency data.')
     parser.add_argument('--output', type=str, help='The filename to save the histogram to.')
+    parser.add_argument('--title', type=str, help='The title of the histogram.', default='Latency Histogram')
     args = parser.parse_args()
 
     # if no filename is provided, print an error and exit
@@ -49,9 +50,9 @@ def main():
     print('Mean: {:.2f} ms'.format(mean))
     print('Standard deviation: {:.2f} ms'.format(std))
 
-    # Plot the histogram
-    plt.hist(data[:,1], bins=50)
-    plt.title('Latency Histogram')
+    # Plot the histogram, over the range x = [0, 150]
+    plt.hist(data[:,1], bins=100, range=(0, 150))
+    plt.title(args.title)
     plt.xlabel('Latency (ms)')
     plt.ylabel('Count')
     # add mean and std to the plot

@@ -20,16 +20,20 @@ extern "C" void app_main(void) {
 
   espp::Logger logger({.tag = "esp-latency-test", .level = espp::Logger::Verbosity::DEBUG});
 
-  auto button_pin = GPIO_NUM_17; // A1 on QtPy ESP32S3
-  auto extra_gnd_pin = GPIO_NUM_9; // A2 on QtPy ESP32S3
-  static constexpr int BUTTON_PRESSED_LEVEL = 0;
-  static constexpr int BUTTON_RELEASED_LEVEL = 1;
+  static constexpr gpio_num_t button_pin = (gpio_num_t)CONFIG_BUTTON_GPIO;
+  static constexpr gpio_num_t extra_gnd_pin = (gpio_num_t)CONFIG_EXTRA_GND_GPIO;
+  static constexpr int BUTTON_PRESSED_LEVEL = CONFIG_BUTTON_PRESS_LEVEL;
+  static constexpr int BUTTON_RELEASED_LEVEL = !BUTTON_PRESSED_LEVEL;
+  static constexpr int UPPER_THRESHOLD = CONFIG_UPPER_THRESHOLD;
+  static constexpr int LOWER_THRESHOLD = CONFIG_LOWER_THRESHOLD;
+  static constexpr adc_unit_t ADC_UNIT = CONFIG_SENSOR_ADC_UNIT == 1 ? ADC_UNIT_1 : ADC_UNIT_2;
+  static constexpr adc_channel_t ADC_CHANNEL = (adc_channel_t)CONFIG_SENSOR_ADC_CHANNEL;
 
   std::vector<espp::AdcConfig> channels{
     // A0 on QtPy ESP32S3
-    {.unit = ADC_UNIT_2, .channel = ADC_CHANNEL_7, .attenuation = ADC_ATTEN_DB_11}};
+    {.unit = ADC_UNIT, .channel = ADC_CHANNEL, .attenuation = ADC_ATTEN_DB_12}};
   espp::OneshotAdc adc({
-      .unit = ADC_UNIT_2,
+      .unit = ADC_UNIT,
       .channels = channels,
     });
 
@@ -40,58 +44,85 @@ extern "C" void app_main(void) {
 
   logger.info("Bootup");
 
-  // espp::SimpleLowpassFilter filter{{.time_constant = 0.01f}};
+  espp::SimpleLowpassFilter lp_filter{{.time_constant = 0.001f}};
 
-  // static constexpr float sample_freq_hz = 100.0f;
-  // static constexpr float filter_cutoff_freq_hz = 10.0f;
-  // static constexpr float normalized_cutoff_frequency =
-  //     2.0f * filter_cutoff_freq_hz / sample_freq_hz;
-  // static constexpr size_t ORDER = 2;
-  // // NOTE: using the Df2 since it's hardware accelerated :)
-  // using Filter = espp::ButterworthFilter<ORDER, espp::BiquadFilterDf2>;
-  // Filter filter({.normalized_cutoff_frequency = normalized_cutoff_frequency});
+  static constexpr float sample_freq_hz = 100.0f;
+  static constexpr float filter_cutoff_freq_hz = 50.0f;
+  static constexpr float normalized_cutoff_frequency =
+      2.0f * filter_cutoff_freq_hz / sample_freq_hz;
+  static constexpr size_t ORDER = 2;
+  // NOTE: using the Df2 since it's hardware accelerated :)
+  using Filter = espp::ButterworthFilter<ORDER, espp::BiquadFilterDf2>;
+  Filter bw_filter({.normalized_cutoff_frequency = normalized_cutoff_frequency});
 
+  enum class TestState : uint8_t {
+    IDLE = 0,
+    RELEASE_DETECTED = 1,
+    BUTTON_RELEASED = 2,
+    PRESS_DETECTED = 3,
+    BUTTON_PRESSED = 4,
+  };
 
-  fmt::print("% time (s), gpio, adc (mV), latency (ms)\n");
+  fmt::print("% time (s), state * 50, adc (mV), latency (ms)\n");
   espp::HighResolutionTimer timer({
       .name = "logging timer",
       .callback = [&]() {
-        static constexpr int UPPER_THRESHOLD = 260;
-        static constexpr int LOWER_THRESHOLD = 200;
         auto voltages = adc.read_all_mv();
-        const auto &mv = voltages[0];
+        auto mv = voltages[0];
         auto now_us = esp_timer_get_time();
 
+        static auto state = TestState::IDLE;
         static auto button_press_start = now_us;
         static auto button_release_start = now_us;
         static uint64_t latency_us = 0;
+        static constexpr uint64_t PERIOD_US = CONFIG_TRIGGER_PERIOD_MS * 1000;
+        static constexpr uint64_t MIN_IDLE_US = 10 * 1000; // 10ms
+        static constexpr uint64_t HOLD_TIME_US = CONFIG_BUTTON_HOLD_TIME_MS * 1000;
 
-        static int button_value = 0;
+        uint64_t t = now_us % PERIOD_US;
+
+        static bool button_pressed = false;
         // randomly shift the button press time within the 1s period
         static int shift = 0;
-        if (now_us % 1000000 < (10 * 1000)) {
-          // update the shift
-          shift = (rand() % 400) * 1000;
+
+        // reset the state at the beginning of the period
+        if (t < MIN_IDLE_US) {
+          shift = (rand() % 400) * 1000; // 0-400ms
+          button_pressed = false;
+          state = TestState::IDLE;
+          button_press_start = 0;
+          button_release_start = 0;
         }
-        if (button_value == 0 && now_us % 1000000 < (10 * 1000 + shift)) {
+
+        // trigger a button press
+        if (!button_pressed && t >= (MIN_IDLE_US + shift)) {
+          state = TestState::BUTTON_PRESSED;
+          button_pressed = true;
           gpio_set_level(button_pin, BUTTON_PRESSED_LEVEL);
-          button_value = 200;
           button_press_start = now_us;
         }
-        if (button_value == 200 && mv > UPPER_THRESHOLD) {
+
+        // try to detect the button press
+        if (state == TestState::BUTTON_PRESSED && mv > UPPER_THRESHOLD) {
+          state = TestState::PRESS_DETECTED;
           latency_us = now_us - button_press_start;
-          button_value = 100;
         }
-        if (button_value == 100 && now_us % 1000000 > (500 * 1000 + shift)) {
+
+        // trigger a button release if it's held long enough
+        if (button_pressed && t > (MIN_IDLE_US + HOLD_TIME_US + shift)) {
+          state = TestState::BUTTON_RELEASED;
           gpio_set_level(button_pin, BUTTON_RELEASED_LEVEL);
           button_release_start = now_us;
-          button_value = 50;
+          button_pressed = false;
         }
-        if (button_value == 50 && mv < LOWER_THRESHOLD) {
+
+        // try to detect the button release
+        if (state == TestState::BUTTON_RELEASED && mv < LOWER_THRESHOLD) {
+          state = TestState::RELEASE_DETECTED;
           latency_us = now_us - button_release_start;
-          button_value = 0;
         }
-        fmt::print("{:.3f}, {}, {}, {:.3f}\n", elapsed(), button_value, mv, latency_us / 1e3f);
+
+        fmt::print("{:.3f}, {}, {}, {:.3f}\n", elapsed(), (int)state * 50, mv, latency_us / 1e3f);
       }
     });
   uint64_t timer_period_us = 5 * 1000; // 5ms

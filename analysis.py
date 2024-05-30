@@ -58,6 +58,10 @@ def main():
     plt.axvline(mean, color='r', linestyle='dashed', linewidth=1)
     plt.axvline(mean + std, color='g', linestyle='dashed', linewidth=1)
     plt.axvline(mean - std, color='g', linestyle='dashed', linewidth=1)
+    # add text to the plot, in the middle of the plot
+    plt.text(mean, 0, f'mean ({mean:.2f})', rotation=45, verticalalignment='bottom')
+    plt.text(mean + std, 0, f'+std ({std:.2f})', rotation=45, verticalalignment='bottom')
+    plt.text(mean - std, 0, f'-std ({std:.2f})', rotation=45, verticalalignment='bottom')
     if args.output:
         plt.savefig(args.output)
     else:

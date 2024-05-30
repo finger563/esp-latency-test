@@ -22,6 +22,7 @@ def main():
     parser.add_argument('filename', type=str, help='The filename of the latency data.')
     parser.add_argument('--output', type=str, help='The filename to save the histogram to.')
     parser.add_argument('--title', type=str, help='The title of the histogram.', default='Latency Histogram')
+    parser.add_argument('--range', type=float, nargs=2, help='The range of the histogram.', default=[0, 150])
     args = parser.parse_args()
 
     # if no filename is provided, print an error and exit
@@ -51,7 +52,7 @@ def main():
     print('Standard deviation: {:.2f} ms'.format(std))
 
     # Plot the histogram, over the range x = [0, 150]
-    plt.hist(data[:,1], bins=100, range=(0, 150))
+    plt.hist(data[:,1], bins=100, range=args.range)
     plt.title(args.title)
     plt.xlabel('Latency (ms)')
     plt.ylabel('Count')

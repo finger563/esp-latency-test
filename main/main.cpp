@@ -3,11 +3,9 @@
 
 #include <driver/gpio.h>
 
-#include "butterworth_filter.hpp"
 #include "high_resolution_timer.hpp"
 #include "logger.hpp"
 #include "oneshot_adc.hpp"
-#include "simple_lowpass_filter.hpp"
 #include "task.hpp"
 
 using namespace std::chrono_literals;
@@ -44,17 +42,17 @@ extern "C" void app_main(void) {
 
   logger.info("Bootup");
 
-  espp::SimpleLowpassFilter lp_filter{{.time_constant = 0.001f}};
+  static uint64_t button_press_start = 0;
+  static uint64_t button_release_start = 0;
+  static uint64_t latency_us = 0;
+  static constexpr uint64_t IDLE_US = 50 * 1000; // time between button presses
+  static constexpr uint64_t HOLD_TIME_US = CONFIG_BUTTON_HOLD_TIME_MS * 1000;
 
-  static constexpr float sample_freq_hz = 100.0f;
-  static constexpr float filter_cutoff_freq_hz = 50.0f;
-  static constexpr float normalized_cutoff_frequency =
-      2.0f * filter_cutoff_freq_hz / sample_freq_hz;
-  static constexpr size_t ORDER = 2;
-  // NOTE: using the Df2 since it's hardware accelerated :)
-  using Filter = espp::ButterworthFilter<ORDER, espp::BiquadFilterDf2>;
-  Filter bw_filter({.normalized_cutoff_frequency = normalized_cutoff_frequency});
+  static bool button_pressed = false;
+  // randomly shift the button press time within the 1s period
+  static int shift = 0;
 
+#if CONFIG_DEBUG_PLOT_ALL
   enum class TestState : uint8_t {
     IDLE = 0,
     RELEASE_DETECTED = 1,
@@ -63,6 +61,11 @@ extern "C" void app_main(void) {
     BUTTON_PRESSED = 4,
   };
 
+  static auto state = TestState::IDLE;
+  static constexpr uint64_t PERIOD_US = CONFIG_TRIGGER_PERIOD_MS * 1000;
+
+  logger.info("Starting latency test, DEBUG_PLOT_ALL enabled");
+
   fmt::print("% time (s), state * 50, adc (mV), latency (ms)\n");
   espp::HighResolutionTimer timer({
       .name = "logging timer",
@@ -70,23 +73,10 @@ extern "C" void app_main(void) {
         auto voltages = adc.read_all_mv();
         auto mv = voltages[0];
         auto now_us = esp_timer_get_time();
-
-        static auto state = TestState::IDLE;
-        static auto button_press_start = now_us;
-        static auto button_release_start = now_us;
-        static uint64_t latency_us = 0;
-        static constexpr uint64_t PERIOD_US = CONFIG_TRIGGER_PERIOD_MS * 1000;
-        static constexpr uint64_t MIN_IDLE_US = 10 * 1000; // 10ms
-        static constexpr uint64_t HOLD_TIME_US = CONFIG_BUTTON_HOLD_TIME_MS * 1000;
-
         uint64_t t = now_us % PERIOD_US;
 
-        static bool button_pressed = false;
-        // randomly shift the button press time within the 1s period
-        static int shift = 0;
-
         // reset the state at the beginning of the period
-        if (t < MIN_IDLE_US) {
+        if (t < IDLE_US) {
           shift = (rand() % 400) * 1000; // 0-400ms
           button_pressed = false;
           state = TestState::IDLE;
@@ -95,7 +85,7 @@ extern "C" void app_main(void) {
         }
 
         // trigger a button press
-        if (state == TestState::IDLE && t >= (MIN_IDLE_US + shift)) {
+        if (state == TestState::IDLE && t >= (IDLE_US + shift)) {
           state = TestState::BUTTON_PRESSED;
           button_pressed = true;
           gpio_set_level(button_pin, BUTTON_PRESSED_LEVEL);
@@ -109,7 +99,7 @@ extern "C" void app_main(void) {
         }
 
         // trigger a button release if it's held long enough
-        if (button_pressed && t > (MIN_IDLE_US + HOLD_TIME_US + shift)) {
+        if (button_pressed && t > (IDLE_US + HOLD_TIME_US + shift)) {
           state = TestState::BUTTON_RELEASED;
           gpio_set_level(button_pin, BUTTON_RELEASED_LEVEL);
           button_release_start = now_us;
@@ -131,4 +121,74 @@ extern "C" void app_main(void) {
   while (true) {
     std::this_thread::sleep_for(1s);
   }
+
+#else // CONFIG_DEBUG_PLOT_ALL
+
+  logger.info("Starting latency test");
+
+  auto get_mv = [&]() {
+    auto voltages = adc.read_all_mv();
+    return voltages[0];
+  };
+
+  fmt::print("% time (s), latency (ms)\n");
+
+  // Let's actually measure latency instead of debugging / logging
+  while (true) {
+    // reset the state at the beginning of the loop
+    shift = (rand() % 400) * 1000; // 0-400ms
+    button_press_start = 0;
+    button_release_start = 0;
+    static constexpr uint64_t MAX_lATENCY_US = 200 * 1000; // 200ms
+
+    // wait for (IDLE_US + shift) microseconds
+    std::this_thread::sleep_for(std::chrono::microseconds(IDLE_US + shift));
+
+    // trigger a button press
+    button_press_start = esp_timer_get_time();
+    gpio_set_level(button_pin, BUTTON_PRESSED_LEVEL);
+
+    // wait for the button press to be detected
+    while (true) {
+      auto now_us = esp_timer_get_time();
+      latency_us = now_us - button_press_start;
+      // read the ADC
+      if (get_mv() > UPPER_THRESHOLD) {
+        break;
+      }
+      // timeout
+      if (latency_us > MAX_lATENCY_US) {
+        break;
+      }
+    }
+
+    // log the latency
+    fmt::print("{:.3f}, {:.3f}\n", elapsed(), latency_us / 1e3f);
+
+    // latency reached, release the button after hold time
+    std::this_thread::sleep_for(std::chrono::microseconds(HOLD_TIME_US - latency_us));
+
+    // release the button
+    button_release_start = esp_timer_get_time();
+    gpio_set_level(button_pin, BUTTON_RELEASED_LEVEL);
+
+    // wait for the button release to be detected
+    while (true) {
+      auto now_us = esp_timer_get_time();
+      latency_us = now_us - button_release_start;
+      // read the ADC
+      if (get_mv() < LOWER_THRESHOLD) {
+        break;
+      }
+      // timeout
+      if (latency_us > MAX_lATENCY_US) {
+        break;
+      }
+    }
+
+    // log the latency
+    fmt::print("{:.3f}, {:.3f}\n", elapsed(), latency_us / 1e3f);
+  }
+
+#endif // CONFIG_DEBUG_PLOT_ALL
 }

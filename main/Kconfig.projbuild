@@ -1,15 +1,22 @@
 menu "Latency Test Configuration"
+    config DEBUG_PLOT_ALL
+        bool "Plot all data"
+        default n
+        help
+            If enabled, runs a timer which plots raw adc value every 5 ms.
+
     config TRIGGER_PERIOD_MS
         int "Trigger period (ms)"
         default 1000
         range 100 10000
+        depends on DEBUG_PLOT_ALL
         help
             The period in milliseconds at which the latency test is triggered.
             Each period will trigger one button press and release.
 
     config BUTTON_HOLD_TIME_MS
         int "Button hold time (ms)"
-        default 500
+        default 150
         range 10 1000
         help
             The time in milliseconds for which the button is held down.

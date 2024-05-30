@@ -7,11 +7,6 @@ CONFIG_FREERTOS_HZ=1000
 CONFIG_ESP_DEFAULT_CPU_FREQ_MHZ_240=y
 CONFIG_ESP_DEFAULT_CPU_FREQ_MHZ=240
 
-# TODO: uncomment if you want to update the event and main task stask sizes
 # Common ESP-related
 #
-# CONFIG_ESP_SYSTEM_EVENT_TASK_STACK_SIZE=4096
-# CONFIG_ESP_MAIN_TASK_STACK_SIZE=8192
-
-# TODO: uncomment if you want to enable exceptions (which may be needed by certain components such as cli)
-# CONFIG_COMPILER_CXX_EXCEPTIONS=y
+CONFIG_ESP_MAIN_TASK_STACK_SIZE=8192

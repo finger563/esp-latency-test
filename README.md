@@ -19,7 +19,7 @@ a histogram of latency values that are measured from the system.
 ## Use
 
 It's recommended to use the
-[uart_serial_plotter](https://github.com/esp-cpp/uart-serial-plotter) after
+[uart_serial_plotter](https://github.com/esp-cpp/uart_serial_plotter) after
 flashing to monitor and plot the latency values in real time. If you do this,
 you can then also save the resultant output to a text file.
 
@@ -29,7 +29,7 @@ script.
 ### Real-time Plotting
 
 You can use the
-[uart_serial_plotter](https://github.com/esp-cpp/uart-serial-plotter) to plot
+[uart_serial_plotter](https://github.com/esp-cpp/uart_serial_plotter) to plot
 the latency values in real time.
 
 ``` sh

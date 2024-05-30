@@ -123,3 +123,9 @@ See the Getting Started Guide for full steps to configure and use ESP-IDF to bui
 
 Example screenshot of the console output from this app:
 
+![CleanShot 2024-05-30 at 16 16 43](https://github.com/finger563/esp-latency-test/assets/213467/e69c99bf-af8e-42cb-8903-8c4b001d8759)
+
+Example histogram generated from the analysis tool:
+
+![image](https://github.com/finger563/esp-latency-test/assets/213467/0835a8ce-d152-40a8-823a-664772681a63)
+

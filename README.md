@@ -16,6 +16,13 @@ a histogram of latency values that are measured from the system.
    [Amazon 3mm flat head PhotoDiode](https://www.amazon.com/dp/B07VNSX74J).
 4. Resistor (1k-10k) from photodiode output to ground.
 
+You'll likely need to run the embedded code once with `CONFIG_DEBUG_PLOT_ALL`
+enabled (via menuconfig), so that you can see the ADC values for the screen
+on/off state based on the screen / app / sensor you select and how you've
+mounted them. I use duct tape to "mount" the sensor to my phone screen
+:sweat_smile:. Then you can configure the appropriate upper/lower thresholds
+accordingly to take data.
+
 ## Use
 
 It's recommended to use the
@@ -104,6 +111,25 @@ To configure the project, run
 ``` sh
 idf.py menuconfig
 ```
+
+You can configure:
+- `DEBUG_PLOT_ALL`: enables a more verbose output which plots the raw adc value
+  and some other state variables every 5ms.
+- `BUTTON_HOLD_TIME_MS`: how long the button should be held down for when it is
+  pressed.
+- `UPPER_THRESHOLD`: the value that the ADC must rise above before the screen is
+  sensed as on / button is sensed as pressed.
+- `LOWER_THRESHOLD`: the value that the ADC must drop below before the screen is
+  sensed as off / button is sensed as released.
+- `BUTTON_PRESS_LEVEL`: the logic level which the board should output on the
+  `BUTTON_GPIO` to trigger a button press event.
+- `BUTTON_GPIO`: the gpio on the board which is connected to the controller
+  button.
+- `EXTRA_GND_GPIO`: the gpio on the board which should output a logic low / gnd
+  signal. Useful to connect to controller ground.
+- `SENSOR_ADC_UNIT`: The ADC Unit of the ESP the photodiode is connected to.
+- `SENSOR_ADC_CHANNEL`: The ADC channel of the ESP the photodiode is connected
+  to.
 
 ## Build and Flash
 

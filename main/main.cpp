@@ -95,7 +95,7 @@ extern "C" void app_main(void) {
         }
 
         // trigger a button press
-        if (!button_pressed && t >= (MIN_IDLE_US + shift)) {
+        if (state == TestState::IDLE && t >= (MIN_IDLE_US + shift)) {
           state = TestState::BUTTON_PRESSED;
           button_pressed = true;
           gpio_set_level(button_pin, BUTTON_PRESSED_LEVEL);

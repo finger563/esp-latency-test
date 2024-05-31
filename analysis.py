@@ -51,6 +51,15 @@ def main():
     print('Mean: {:.2f} ms'.format(mean))
     print('Standard deviation: {:.2f} ms'.format(std))
 
+    # compute the number of actions per minute (average) over the entire
+    # dataset. Every two rows is one action (press and release of a button), and
+    # the timestamp is in seconds so we divide by 60 to get minutes.
+    total_time = (data[-1,0] - data[0,0]) / 60
+    total_actions = data.shape[0] / 2
+    actions_per_minute = total_actions / total_time
+
+    print('Actions per minute: {:.2f}'.format(actions_per_minute))
+
     # Plot the histogram, over the range x = [0, 150]
     plt.hist(data[:,1], bins=100, range=args.range)
     plt.title(args.title)
@@ -64,6 +73,8 @@ def main():
     plt.text(mean, 0, f'mean ({mean:.2f})', rotation=45, verticalalignment='bottom')
     plt.text(mean + std, 0, f'+std ({std:.2f})', rotation=45, verticalalignment='bottom')
     plt.text(mean - std, 0, f'-std ({std:.2f})', rotation=45, verticalalignment='bottom')
+    # add actions per minute to the plot as a nice text box in the upper left
+    plt.text(0.05, 0.95, f'APM >= {actions_per_minute:.2f}', transform=plt.gca().transAxes, verticalalignment='top', bbox=dict(facecolor='white', alpha=0.5))
     if args.output:
         plt.savefig(args.output)
     else:

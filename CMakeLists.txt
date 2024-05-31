@@ -12,7 +12,7 @@ set(EXTRA_COMPONENT_DIRS
 
 set(
   COMPONENTS
-  "main esptool_py driver adc logger task timer"
+  "main esptool_py driver adc filters logger task timer"
   CACHE STRING
   "List of components to include"
   )

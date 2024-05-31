@@ -5,9 +5,24 @@ menu "Latency Test Configuration"
         help
             If enabled, runs a timer which plots raw adc value every 5 ms.
 
+    config FILTER_ADC
+        bool "Filter ADC values"
+        default y
+        help
+            If enabled, filters the ADC values using a simple lowpass filter.
+
+    config FILTER_ALPHA
+        int "Filter alpha (*1000)"
+        default 1
+        range 1 1000
+        depends on FILTER_ADC
+        help
+            The time constant for the lowpass filter. The value will be divided
+            by 1000 to get the actual alpha value.
+
     config TRIGGER_PERIOD_MS
         int "Trigger period (ms)"
-        default 1000
+        default 300
         range 100 10000
         depends on DEBUG_PLOT_ALL
         help
@@ -16,21 +31,29 @@ menu "Latency Test Configuration"
 
     config BUTTON_HOLD_TIME_MS
         int "Button hold time (ms)"
-        default 150
+        default 100
         range 10 1000
         help
             The time in milliseconds for which the button is held down.
 
+    config MAX_BUTTON_DELAY_MS
+        int "Maximum button delay (ms)"
+        default 100
+        range 0 1000
+        help
+            The maximum delay / shift in milliseconds between when the button is
+            released and when the next button press is triggered.
+
     config UPPER_THRESHOLD
         int "Threshold value (mV) for registering a screen on event"
-        default 120
+        default 80
         help
             The threshold value for registering a screen on event. The value is
             in units of millivolts.
 
     config LOWER_THRESHOLD
         int "Threshold value (mV) for registering a screen off event"
-        default 60
+        default 30
         help
             The threshold value for registering a screen off event. The value is
             in units of millivolts.

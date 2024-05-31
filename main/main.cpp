@@ -6,6 +6,7 @@
 #include "high_resolution_timer.hpp"
 #include "logger.hpp"
 #include "oneshot_adc.hpp"
+#include "simple_lowpass_filter.hpp"
 #include "task.hpp"
 
 using namespace std::chrono_literals;
@@ -47,10 +48,26 @@ extern "C" void app_main(void) {
   static uint64_t latency_us = 0;
   static constexpr uint64_t IDLE_US = 50 * 1000; // time between button presses
   static constexpr uint64_t HOLD_TIME_US = CONFIG_BUTTON_HOLD_TIME_MS * 1000;
+  static constexpr uint64_t MAX_SHIFT_MS = CONFIG_MAX_BUTTON_DELAY_MS;
 
   static bool button_pressed = false;
   // randomly shift the button press time within the 1s period
   static int shift = 0;
+
+#if CONFIG_FILTER_ADC
+  // filter the ADC readings
+  static constexpr float ALPHA = CONFIG_FILTER_ALPHA / 1e3f;
+  espp::SimpleLowpassFilter filter({.time_constant=ALPHA});
+#endif // CONFIG_FILTER_ADC
+
+  auto get_mv = [&]() {
+    auto voltages = adc.read_all_mv();
+#if CONFIG_FILTER_ADC
+    return filter(voltages[0]);
+#else // CONFIG_FILTER_ADC
+    return voltages[0];
+#endif // CONFIG_FILTER_ADC
+  };
 
 #if CONFIG_DEBUG_PLOT_ALL
   enum class TestState : uint8_t {
@@ -70,14 +87,13 @@ extern "C" void app_main(void) {
   espp::HighResolutionTimer timer({
       .name = "logging timer",
       .callback = [&]() {
-        auto voltages = adc.read_all_mv();
-        auto mv = voltages[0];
+        auto mv = get_mv();
         auto now_us = esp_timer_get_time();
         uint64_t t = now_us % PERIOD_US;
 
         // reset the state at the beginning of the period
         if (t < IDLE_US) {
-          shift = (rand() % 400) * 1000; // 0-400ms
+          shift = (rand() % MAX_SHIFT_MS) * 1000;
           button_pressed = false;
           state = TestState::IDLE;
           button_press_start = 0;
@@ -126,17 +142,12 @@ extern "C" void app_main(void) {
 
   logger.info("Starting latency test");
 
-  auto get_mv = [&]() {
-    auto voltages = adc.read_all_mv();
-    return voltages[0];
-  };
-
   fmt::print("% time (s), latency (ms)\n");
 
   // Let's actually measure latency instead of debugging / logging
   while (true) {
     // reset the state at the beginning of the loop
-    shift = (rand() % 400) * 1000; // 0-400ms
+    shift = (rand() % MAX_SHIFT_MS) * 1000;
     button_press_start = 0;
     button_release_start = 0;
     static constexpr uint64_t MAX_lATENCY_US = 200 * 1000; // 200ms
@@ -160,6 +171,7 @@ extern "C" void app_main(void) {
       if (latency_us > MAX_lATENCY_US) {
         break;
       }
+      std::this_thread::sleep_for(1ms);
     }
 
     // log the latency
@@ -184,6 +196,7 @@ extern "C" void app_main(void) {
       if (latency_us > MAX_lATENCY_US) {
         break;
       }
+      std::this_thread::sleep_for(1ms);
     }
 
     // log the latency

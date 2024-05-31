@@ -2,14 +2,36 @@
 #include <thread>
 
 #include <driver/gpio.h>
+#include <esp_hidh.h>
 
 #include "high_resolution_timer.hpp"
 #include "logger.hpp"
+#include "nvs.hpp"
 #include "oneshot_adc.hpp"
 #include "simple_lowpass_filter.hpp"
 #include "task.hpp"
 
+#include "esp_hid_gap.h"
+
 using namespace std::chrono_literals;
+
+void hidh_callback(void *handler_args, esp_event_base_t base, int32_t id, void *event_data) {
+  esp_hidh_event_t event = (esp_hidh_event_t)event_data;
+  esp_hidh_event_data_t *param = (esp_hidh_event_data_t *)event_data;
+  switch (event) {
+  case ESP_HIDH_OPEN_EVENT:
+    printf("ESP_HIDH_OPEN_EVENT\n");
+    break;
+  case ESP_HIDH_CLOSE_EVENT:
+    printf("ESP_HIDH_CLOSE_EVENT\n");
+    break;
+  case ESP_HIDH_INPUT_EVENT:
+    printf("ESP_HIDH_INPUT_EVENT\n");
+    break;
+  default:
+    break;
+  }
+}
 
 extern "C" void app_main(void) {
   static auto elapsed = [&]() {
@@ -27,6 +49,28 @@ extern "C" void app_main(void) {
   static constexpr int LOWER_THRESHOLD = CONFIG_LOWER_THRESHOLD;
   static constexpr adc_unit_t ADC_UNIT = CONFIG_SENSOR_ADC_UNIT == 1 ? ADC_UNIT_1 : ADC_UNIT_2;
   static constexpr adc_channel_t ADC_CHANNEL = (adc_channel_t)CONFIG_SENSOR_ADC_CHANNEL;
+
+  std::error_code ec;
+  espp::Nvs nvs;
+  nvs.init(ec);
+  if (ec) {
+    logger.error("Failed to initialize NVS: {}", ec.message());
+    return;
+  }
+
+  logger.info("setting hid gap, mode: {}", HID_HOST_MODE);
+  ESP_ERROR_CHECK( esp_hid_gap_init(HID_HOST_MODE) );
+
+#if CONFIG_BT_BLE_ENABLED
+  ESP_ERROR_CHECK( esp_ble_gattc_register_callback(esp_hidh_gattc_event_handler) );
+#endif // CONFIG_BT_BLE_ENABLED
+
+  esp_hidh_config_t config = {
+    .callback = hidh_callback,
+    .event_stack_size = 4096,
+    .callback_arg = NULL,
+  };
+  ESP_ERROR_CHECK( esp_hidh_init(&config) );
 
   std::vector<espp::AdcConfig> channels{
     // A0 on QtPy ESP32S3

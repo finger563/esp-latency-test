@@ -171,7 +171,6 @@ extern "C" void app_main(void) {
       if (latency_us > MAX_lATENCY_US) {
         break;
       }
-      std::this_thread::sleep_for(1ms);
     }
 
     // log the latency
@@ -196,7 +195,6 @@ extern "C" void app_main(void) {
       if (latency_us > MAX_lATENCY_US) {
         break;
       }
-      std::this_thread::sleep_for(1ms);
     }
 
     // log the latency

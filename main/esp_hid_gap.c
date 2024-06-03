@@ -473,7 +473,7 @@ static void handle_ble_device_result(struct ble_scan_result_evt_param *scan_rst)
   }
   GAP_DBG_PRINTF("\n");
 
-  if (uuid == ESP_GATT_UUID_HID_SVC) {
+  if (uuid == ESP_GATT_UUID_HID_SVC || adv_name_len) {
     add_ble_scan_result(scan_rst->bda, scan_rst->ble_addr_type, appearance, adv_name, adv_name_len,
                         scan_rst->rssi);
   }
@@ -586,9 +586,9 @@ static esp_err_t start_bt_scan(uint32_t seconds) {
 
 static void ble_gap_event_handler(esp_gap_ble_cb_event_t event, esp_ble_gap_cb_param_t *param) {
   switch (event) {
-  /*
-   * SCAN
-   * */
+    /*
+     * SCAN
+     * */
   case ESP_GAP_BLE_SCAN_PARAM_SET_COMPLETE_EVT: {
     ESP_LOGV(TAG, "BLE GAP EVENT SCAN_PARAM_SET_COMPLETE");
     SEND_BLE_CB();
@@ -610,6 +610,16 @@ static void ble_gap_event_handler(esp_gap_ble_cb_event_t event, esp_ble_gap_cb_p
     }
     break;
   }
+
+  case ESP_GAP_BLE_UPDATE_CONN_PARAMS_EVT:
+    ESP_LOGI(TAG,
+             "update connection params status = %d, min_int = %d, max_int = %d,conn_int = "
+             "%d,latency = %d, timeout = %d",
+             param->update_conn_params.status, param->update_conn_params.min_int,
+             param->update_conn_params.max_int, param->update_conn_params.conn_int,
+             param->update_conn_params.latency, param->update_conn_params.timeout);
+    break;
+
   case ESP_GAP_BLE_SCAN_STOP_COMPLETE_EVT: {
     ESP_LOGV(TAG, "BLE GAP EVENT SCAN CANCELED");
     break;

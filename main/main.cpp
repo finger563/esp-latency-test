@@ -29,6 +29,18 @@ void hidh_callback(void *handler_args, esp_event_base_t base, int32_t id, void *
     if (param->open.status == ESP_OK) {
       fmt::print("Connected to device\n");
       connected = true;
+#if CONFIG_BT_BLE_ENABLED
+      // if BLE, update the connection parameters
+      const uint8_t *bda = esp_hidh_dev_bda_get(param->open.dev);
+      esp_ble_conn_update_params_t conn_params = {
+          .min_int = 12, // * 1.25ms = 15ms
+          .max_int = 48, // * 1.25ms = 60ms
+          .latency = 0,
+          .timeout = 400,
+      };
+      memcpy(conn_params.bda, bda, ESP_BD_ADDR_LEN);
+      esp_ble_gap_update_conn_params(&conn_params);
+#endif // CONFIG_BT_BLE_ENABLED
     } else {
       fmt::print("Failed to connect to device\n");
     }
@@ -179,31 +191,34 @@ extern "C" void app_main(void) {
     }
   };
 
-  auto scan_and_connect = [&](std::string device_name) -> bool {
-    scan(5);
-    if (devices.empty()) {
-      logger.error("No devices found");
-      return false;
-    }
+  auto connect = [&](const std::string &remote_name,
+                     const std::string &remote_address = "") -> bool {
     esp_hid_scan_result_t *result = nullptr;
     auto it = std::find_if(devices.begin(), devices.end(), [&](const auto &pair) {
       const auto &name = pair.first;
-      // check against name and address (since the name may not show up...)
-      return device_name.contains(name) || name.contains(device_name) ||
-             name.contains(device_address) || device_address.contains(name);
+      // check both remote name and remote address since the name may not show up
+      return remote_name.contains(name) || name.contains(remote_name) ||
+             remote_address.contains(name) || name.contains(remote_address);
     });
     if (it != devices.end()) {
       result = it->second;
       logger.info("Found device '{}'", result->name ? result->name : "Unknown");
     } else {
-      logger.error("Device '{}' not found", device_name);
+      logger.error("Device '{}' not found", remote_name);
       return false;
     }
-    logger.info("Connecting to device '{}'", device_name);
+    logger.info("Connecting to device '{}'", remote_name);
     logger.info("          at address {:02x}:{:02x}:{:02x}:{:02x}:{:02x}:{:02x}",
                 ESP_BD_ADDR_HEX(result->bda));
     if (result->transport == ESP_HID_TRANSPORT_BLE) {
       logger.info("          using BLE, addr_type: {}", (int)result->ble.addr_type);
+
+      // if BLE, update the connection parameters
+      static constexpr uint16_t min_interval = 12; // 15ms
+      static constexpr uint16_t max_interval = 80; // 100ms
+      esp_ble_gap_set_prefer_conn_params(result->bda, min_interval, max_interval, 0, 400);
+
+      // now connect
       esp_hidh_dev_open(result->bda, ESP_HID_TRANSPORT_BLE, result->ble.addr_type);
     } else {
       logger.info("          using BT");
@@ -212,6 +227,15 @@ extern "C" void app_main(void) {
     // now free the results
     esp_hid_scan_results_free(results);
     return true;
+  };
+
+  auto scan_and_connect = [&](int num_seconds = 5) -> bool {
+    scan(num_seconds);
+    if (devices.empty()) {
+      logger.error("No devices found");
+      return false;
+    }
+    return connect(device_name, device_address);
   };
 
   // menu functions for getting / setting use_hid_host and device_name
@@ -259,6 +283,27 @@ extern "C" void app_main(void) {
       "scan", [&](std::ostream &out) { scan_and_print(out); }, "Scan for HID devices (5 seconds)");
 
   root_menu->Insert(
+      "connect",
+      [&](std::ostream &out) {
+        if (connect(device_name, device_address)) {
+          out << "Connected to device '" << device_name << "'\n";
+        } else {
+          out << "Failed to connect to device\n";
+        }
+      },
+      "Connect to the device with the given name");
+  root_menu->Insert(
+      "connect", {"device_name"},
+      [&](std::ostream &out, const std::string &name) {
+        if (connect(name)) {
+          out << "Connected to device '" << name << "'\n";
+        } else {
+          out << "Failed to connect to device\n";
+        }
+      },
+      "Connect to the device with the given name");
+
+  root_menu->Insert(
       "scan", {"seconds"}, [&](std::ostream &out, int seconds) { scan_and_print(out, seconds); },
       "Scan for HID devices");
 
@@ -266,7 +311,9 @@ extern "C" void app_main(void) {
   // the cli, else start the test according to the defaults loaded from NVS.
   bool run_menu = false;
   auto start = esp_timer_get_time();
-  logger.info("Press any key to enter the CLI menu, or wait 5 seconds to start the test");
+  static constexpr int num_seconds = 3;
+  logger.info("Press any key to enter the CLI menu, or wait {} seconds to start the test",
+              num_seconds);
   while (true) {
     // delay a little bit
     std::this_thread::sleep_for(500ms);
@@ -277,7 +324,7 @@ extern "C" void app_main(void) {
       run_menu = true;
       break;
     }
-    if (esp_timer_get_time() - start > 5 * 1e6) {
+    if (esp_timer_get_time() - start > num_seconds * 1e6) {
       // if 5 seconds have passed, start the test
       break;
     }
@@ -297,7 +344,7 @@ extern "C" void app_main(void) {
   // if we've gotten here, either the CLI wasn't entered or the user exited it
   if (use_hid_host) {
     logger.info("Configured to use HID Host, connecting to device '{}'", device_name);
-    while (!connected && !scan_and_connect(device_name)) {
+    while (!connected && !scan_and_connect(3)) {
       logger.warn("Failed to connect to device '{}', retrying...", device_name);
     }
     logger.info("Connected!");

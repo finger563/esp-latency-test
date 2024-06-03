@@ -27,10 +27,14 @@ void hidh_callback(void *handler_args, esp_event_base_t base, int32_t id, void *
   switch (event) {
   case ESP_HIDH_OPEN_EVENT:
     if (param->open.status == ESP_OK) {
+      fmt::print("Connected to device\n");
       connected = true;
+    } else {
+      fmt::print("Failed to connect to device\n");
     }
     break;
   case ESP_HIDH_CLOSE_EVENT:
+    fmt::print("Disconnected from device\n");
     connected = false;
     break;
   case ESP_HIDH_INPUT_EVENT:
@@ -99,20 +103,32 @@ extern "C" void app_main(void) {
   // load previous settings (if any) from NVS
   // - HID Host or PhotoDiode (ADC)
   // - if using HID Host, select the device to connect to
-  std::string device_name;
   nvs.get_or_set_var("latency", "use_hid_host", use_hid_host, use_hid_host, ec);
   if (ec) {
     logger.error("Failed to get use_hid_host from NVS: {}", ec.message());
     return;
   }
   logger.info("Loaded use_hid_host: {}", use_hid_host);
+
+  std::string device_name;
+  std::string device_address;
   if (use_hid_host) {
+    // get the name
     nvs.get_var("latency", "device_name", device_name, ec);
     if (ec) {
-      logger.error("Failed to get device_name from NVS: {}", ec.message());
-      return;
+      logger.warn("Failed to get device_name from NVS: {}", ec.message());
+    } else {
+      logger.info("Loaded device_name: '{}'", device_name);
     }
-    logger.info("Loaded device_name: '{}'", device_name);
+    ec.clear();
+    // get device address (since the name may not show up...)
+    nvs.get_var("latency", "device_address", device_address, ec);
+    if (ec) {
+      logger.warn("Failed to get device_address from NVS: {}", ec.message());
+    } else {
+      logger.info("Loaded device_address: '{}'", device_address);
+    }
+    ec.clear();
   }
 
   auto root_menu = std::make_unique<cli::Menu>("latency", "Latency Measurement Menu");
@@ -124,6 +140,7 @@ extern "C" void app_main(void) {
   std::unordered_map<std::string, esp_hid_scan_result_t *> devices;
   static esp_hid_scan_result_t *results = NULL;
   auto scan = [&](int seconds = 5) {
+    logger.info("Scanning for devices for {} seconds", seconds);
     size_t results_len = 0;
     if (results) {
       esp_hid_scan_results_free(results);
@@ -135,11 +152,16 @@ extern "C" void app_main(void) {
     if (results_len > 0) {
       esp_hid_scan_result_t *r = results;
       while (r) {
-        if (r->name == nullptr) {
-          r = r->next;
-          continue;
-        }
-        devices[r->name] = r;
+        bool has_name = r->name != nullptr;
+        bool is_gamepad = r->usage == ESP_HID_USAGE_GAMEPAD;
+        std::string address =
+            fmt::format("{:02x}:{:02x}:{:02x}:{:02x}:{:02x}:{:02x}", ESP_BD_ADDR_HEX(r->bda));
+        std::string name = has_name ? r->name : address;
+        logger.info("Found device: {} ({}), addr: {}", name, is_gamepad ? "Gamepad" : "Unknown",
+                    address);
+        // use either the name (if it exists) or the address as the key
+        logger.info("Found device '{}'", name);
+        devices[name] = r;
         r = r->next;
       }
     }
@@ -163,17 +185,36 @@ extern "C" void app_main(void) {
       logger.error("No devices found");
       return false;
     }
-    auto it = devices.find(device_name);
-    if (it == devices.end()) {
+    esp_hid_scan_result_t *result = nullptr;
+    auto it = std::find_if(devices.begin(), devices.end(), [&](const auto &pair) {
+      const auto &name = pair.first;
+      // check against name and address (since the name may not show up...)
+      return device_name.contains(name) || name.contains(device_name) ||
+             name.contains(device_address) || device_address.contains(name);
+    });
+    if (it != devices.end()) {
+      result = it->second;
+      logger.info("Found device '{}'", result->name ? result->name : "Unknown");
+    } else {
       logger.error("Device '{}' not found", device_name);
       return false;
     }
-    auto result = it->second;
     logger.info("Connecting to device '{}'", device_name);
-    esp_hidh_dev_open(result->bda, result->transport, result->ble.addr_type);
+    logger.info("          at address {:02x}:{:02x}:{:02x}:{:02x}:{:02x}:{:02x}",
+                ESP_BD_ADDR_HEX(result->bda));
+    if (result->transport == ESP_HID_TRANSPORT_BLE) {
+      logger.info("          using BLE, addr_type: {}", (int)result->ble.addr_type);
+      esp_hidh_dev_open(result->bda, ESP_HID_TRANSPORT_BLE, result->ble.addr_type);
+    } else {
+      logger.info("          using BT");
+      esp_hidh_dev_open(result->bda, ESP_HID_TRANSPORT_BT, 0);
+    }
+    // now free the results
+    esp_hid_scan_results_free(results);
     return true;
   };
 
+  // menu functions for getting / setting use_hid_host and device_name
   root_menu->Insert(
       "use_hid_host", [&](std::ostream &out) { out << "use_hid_host: " << use_hid_host << "\n"; },
       "Get the current value of use_hid_host");
@@ -181,8 +222,13 @@ extern "C" void app_main(void) {
       "use_hid_host", {"Use HID Host (true/false)"},
       [&](std::ostream &out, bool value) {
         use_hid_host = value;
+        std::error_code ec;
         nvs.set_var("latency", "use_hid_host", use_hid_host, ec);
-        out << "use_hid_host: " << use_hid_host << "\n";
+        if (ec) {
+          out << "Failed to set use_hid_host: " << ec.message() << "\n";
+        } else {
+          out << "use_hid_host: " << use_hid_host << "\n";
+        }
       },
       "Set the value of use_hid_host");
 
@@ -191,10 +237,21 @@ extern "C" void app_main(void) {
       "Get the current value of device_name");
   root_menu->Insert(
       "device_name", {"Device Name"},
-      [&](std::ostream &out, std::string value) {
+      [&](std::ostream &out, const std::string &value) {
         device_name = value;
+        std::error_code ec;
         nvs.set_var("latency", "device_name", (const std::string)device_name, ec);
-        out << "device_name: " << device_name << "\n";
+        if (ec) {
+          out << "Failed to set device_name: " << ec.message() << "\n";
+        } else {
+          out << "device_name: " << device_name << "\n";
+        }
+        if (devices.contains(device_name)) {
+          auto result = devices[device_name];
+          device_address = fmt::format("{:02x}:{:02x}:{:02x}:{:02x}:{:02x}:{:02x}",
+                                       ESP_BD_ADDR_HEX(result->bda));
+          nvs.set_var("latency", "device_address", (const std::string)device_address, ec);
+        }
       },
       "Set the value of device_name");
 
@@ -207,14 +264,48 @@ extern "C" void app_main(void) {
 
   // wait 5 seconds for the user to send input over stdin. If receive input, run
   // the cli, else start the test according to the defaults loaded from NVS.
+  bool run_menu = false;
+  auto start = esp_timer_get_time();
+  logger.info("Press any key to enter the CLI menu, or wait 5 seconds to start the test");
+  while (true) {
+    // delay a little bit
+    std::this_thread::sleep_for(500ms);
+    char c;
+    // see if there is any data available on stdin
+    if (read(fileno(stdin), &c, 1) > 0) {
+      // if there is, run the menu
+      run_menu = true;
+      break;
+    }
+    if (esp_timer_get_time() - start > 5 * 1e6) {
+      // if 5 seconds have passed, start the test
+      break;
+    }
+  }
+
+  if (run_menu) {
+    logger.info("Entering CLI menu");
+    cli::SetColor();
+    cli::Cli cli(std::move(root_menu));
+    cli.ExitAction([](auto &out) { out << "Goodbye and thanks for all the fish.\n"; });
+
+    espp::Cli input(cli);
+    input.SetInputHistorySize(10);
+    input.Start();
+  }
 
   // if we've gotten here, either the CLI wasn't entered or the user exited it
   if (use_hid_host) {
-    while (!scan_and_connect(device_name)) {
+    logger.info("Configured to use HID Host, connecting to device '{}'", device_name);
+    while (!connected && !scan_and_connect(device_name)) {
       logger.warn("Failed to connect to device '{}', retrying...", device_name);
     }
+    logger.info("Connected!");
   }
 #endif // CONFIG_IDF_TARGET_ESP32
+  if (!use_hid_host) {
+    logger.info("Configured to use PhotoDiode (ADC)");
+  }
 
   std::vector<espp::AdcConfig> channels{
       // A0 on QtPy ESP32S3
@@ -224,6 +315,10 @@ extern "C" void app_main(void) {
       .channels = channels,
   });
 
+  logger.info("Setting up GPIO pins");
+  logger.info("Button pin: {}, extra GND pin: {}", (int)button_pin, (int)extra_gnd_pin);
+  logger.info("Button pressed level: {}, released level: {}", BUTTON_PRESSED_LEVEL,
+              BUTTON_RELEASED_LEVEL);
   gpio_set_direction(button_pin, GPIO_MODE_OUTPUT);
   gpio_set_level(button_pin, BUTTON_RELEASED_LEVEL);
   gpio_set_direction(extra_gnd_pin, GPIO_MODE_OUTPUT);
@@ -238,7 +333,6 @@ extern "C" void app_main(void) {
   static constexpr uint64_t HOLD_TIME_US = CONFIG_BUTTON_HOLD_TIME_MS * 1000;
   static constexpr uint64_t MAX_SHIFT_MS = CONFIG_MAX_BUTTON_DELAY_MS;
 
-  static bool button_pressed = false;
   // randomly shift the button press time within the 1s period
   static int shift = 0;
 
@@ -258,7 +352,7 @@ extern "C" void app_main(void) {
   };
 
 #if CONFIG_DEBUG_PLOT_ALL
-  if (use_hid_host) {
+  if (use_hid_host) { // cppcheck-suppresss knownConditionTrueFalse
     logger.warning("DEBUG_PLOT_ALL is not supported with HID Host, will log ADC values instead");
   }
   enum class TestState : uint8_t {
@@ -277,6 +371,7 @@ extern "C" void app_main(void) {
   fmt::print("% time (s), state * 50, adc (mV), latency (ms)\n");
   espp::HighResolutionTimer timer(
       {.name = "logging timer", .callback = [&]() {
+         static bool button_pressed = false;
          auto mv = get_mv();
          auto now_us = esp_timer_get_time();
          uint64_t t = now_us % PERIOD_US;
@@ -349,7 +444,7 @@ extern "C" void app_main(void) {
     gpio_set_level(button_pin, BUTTON_PRESSED_LEVEL);
 
     // wait for the button press to be detected
-    if (use_hid_host) {
+    if (use_hid_host) { // cppcheck-suppress knownConditionTrueFalse
       std::unique_lock<std::mutex> lock(mutex);
       auto retval = cv.wait_for(lock, 500ms);
       if (retval == std::cv_status::timeout) {

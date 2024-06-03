@@ -89,7 +89,7 @@ esp_err_t esp_hid_ble_gap_adv_init(uint16_t appearance, const char *device_name)
 esp_err_t esp_hid_ble_gap_adv_start(void);
 
 #if !CONFIG_BT_NIMBLE_ENABLED
-void print_uuid(esp_bt_uuid_t *uuid);
+void print_uuid(const esp_bt_uuid_t *uuid);
 const char *ble_addr_type_str(esp_ble_addr_type_t ble_addr_type);
 #endif
 

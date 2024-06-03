@@ -33,6 +33,7 @@ void hidh_callback(void *handler_args, esp_event_base_t base, int32_t id, void *
       // if BLE, update the connection parameters
       const uint8_t *bda = esp_hidh_dev_bda_get(param->open.dev);
       esp_ble_conn_update_params_t conn_params = {
+          .bda = {0},
           .min_int = 12, // * 1.25ms = 15ms
           .max_int = 48, // * 1.25ms = 60ms
           .latency = 0,
@@ -349,8 +350,8 @@ extern "C" void app_main(void) {
     }
     logger.info("Connected!");
   }
-#endif // CONFIG_IDF_TARGET_ESP32
-  if (!use_hid_host) {
+#endif                 // CONFIG_IDF_TARGET_ESP32
+  if (!use_hid_host) { // cppcheck-suppress knownConditionTrueFalse
     logger.info("Configured to use PhotoDiode (ADC)");
   }
 
@@ -491,7 +492,7 @@ extern "C" void app_main(void) {
     gpio_set_level(button_pin, BUTTON_PRESSED_LEVEL);
 
     // wait for the button press to be detected
-    if (use_hid_host) { // cppcheck-suppress knownConditionTrueFalse
+    if (use_hid_host) {
       std::unique_lock<std::mutex> lock(mutex);
       auto retval = cv.wait_for(lock, 500ms);
       if (retval == std::cv_status::timeout) {

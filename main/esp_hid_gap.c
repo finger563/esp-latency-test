@@ -32,7 +32,8 @@ static const char *TAG = "ESP_HID_GAP";
 #define GAP_DBG_PRINTF(...)
 
 #if CONFIG_BT_HID_HOST_ENABLED
-static const char *gap_bt_prop_type_names[5] = {"", "BDNAME", "COD", "RSSI", "EIR"};
+[[maybe_unused]] static const char *gap_bt_prop_type_names[5] = {"", "BDNAME", "COD", "RSSI",
+                                                                 "EIR"};
 #endif
 
 static esp_hid_scan_result_t *bt_scan_results = NULL;
@@ -183,8 +184,8 @@ static esp_hid_scan_result_t *find_scan_result(const uint8_t *bda, esp_hid_scan_
 }
 #endif
 #if CONFIG_BT_HID_HOST_ENABLED
-static void add_bt_scan_result(esp_bd_addr_t bda, esp_bt_cod_t *cod, esp_bt_uuid_t *uuid,
-                               uint8_t *name, uint8_t name_len, int rssi) {
+static void add_bt_scan_result(esp_bd_addr_t bda, esp_bt_cod_t *cod, const esp_bt_uuid_t *uuid,
+                               const uint8_t *name, uint8_t name_len, int rssi) {
   esp_hid_scan_result_t *r = find_scan_result(bda, bt_scan_results);
   if (r) {
     // Some info may come later
@@ -238,7 +239,8 @@ static void add_bt_scan_result(esp_bd_addr_t bda, esp_bt_cod_t *cod, esp_bt_uuid
 
 #if CONFIG_BT_BLE_ENABLED
 static void add_ble_scan_result(esp_bd_addr_t bda, esp_ble_addr_type_t addr_type,
-                                uint16_t appearance, uint8_t *name, uint8_t name_len, int rssi) {
+                                uint16_t appearance, const uint8_t *name, uint8_t name_len,
+                                int rssi) {
   if (find_scan_result(bda, ble_scan_results)) {
     ESP_LOGW(TAG, "Result already exists!");
     return;
@@ -274,7 +276,7 @@ static void add_ble_scan_result(esp_bd_addr_t bda, esp_ble_addr_type_t addr_type
 
 #if CONFIG_BT_NIMBLE_ENABLED
 static void add_ble_scan_result(const uint8_t *bda, uint8_t addr_type, uint16_t appearance,
-                                uint8_t *name, uint8_t name_len, int rssi) {
+                                const uint8_t *name, uint8_t name_len, int rssi) {
   if (find_scan_result(bda, ble_scan_results)) {
     ESP_LOGW(TAG, "Result already exists!");
     return;
@@ -309,7 +311,7 @@ static void add_ble_scan_result(const uint8_t *bda, uint8_t addr_type, uint16_t 
 #endif /* CONFIG_BT_BLE_ENABLED */
 
 #if !CONFIG_BT_NIMBLE_ENABLED
-void print_uuid(esp_bt_uuid_t *uuid) {
+void print_uuid(const esp_bt_uuid_t *uuid) {
   if (uuid->len == ESP_UUID_LEN_16) {
     GAP_DBG_PRINTF("UUID16: 0x%04x", uuid->uuid.uuid16);
   } else if (uuid->len == ESP_UUID_LEN_32) {
@@ -433,17 +435,16 @@ static void handle_ble_device_result(struct ble_scan_result_evt_param *scan_rst)
 
   uint16_t uuid = 0;
   uint16_t appearance = 0;
-  char name[64] = {0};
 
   uint8_t uuid_len = 0;
-  uint8_t *uuid_d =
+  const uint8_t *uuid_d =
       esp_ble_resolve_adv_data(scan_rst->ble_adv, ESP_BLE_AD_TYPE_16SRV_CMPL, &uuid_len);
   if (uuid_d != NULL && uuid_len) {
     uuid = uuid_d[0] + (uuid_d[1] << 8);
   }
 
   uint8_t appearance_len = 0;
-  uint8_t *appearance_d =
+  const uint8_t *appearance_d =
       esp_ble_resolve_adv_data(scan_rst->ble_adv, ESP_BLE_AD_TYPE_APPEARANCE, &appearance_len);
   if (appearance_d != NULL && appearance_len) {
     appearance = appearance_d[0] + (appearance_d[1] << 8);
@@ -458,17 +459,15 @@ static void handle_ble_device_result(struct ble_scan_result_evt_param *scan_rst)
         esp_ble_resolve_adv_data(scan_rst->ble_adv, ESP_BLE_AD_TYPE_NAME_SHORT, &adv_name_len);
   }
 
-  if (adv_name != NULL && adv_name_len) {
-    memcpy(name, adv_name, adv_name_len);
-    name[adv_name_len] = 0;
-  }
-
   GAP_DBG_PRINTF("BLE: " ESP_BD_ADDR_STR ", ", ESP_BD_ADDR_HEX(scan_rst->bda));
   GAP_DBG_PRINTF("RSSI: %d, ", scan_rst->rssi);
   GAP_DBG_PRINTF("UUID: 0x%04x, ", uuid);
   GAP_DBG_PRINTF("APPEARANCE: 0x%04x, ", appearance);
   GAP_DBG_PRINTF("ADDR_TYPE: '%s'", ble_addr_type_str(scan_rst->ble_addr_type));
-  if (adv_name_len) {
+  if (adv_name_len && adv_name != NULL) {
+    char name[64] = {0};
+    memcpy(name, adv_name, adv_name_len);
+    name[adv_name_len] = 0;
     GAP_DBG_PRINTF(", NAME: '%s'", name);
   }
   GAP_DBG_PRINTF("\n");
@@ -991,7 +990,7 @@ static int nimble_hid_gap_event(struct ble_gap_event *event, void *arg) {
       rc = ble_sm_inject_io(event->passkey.conn_handle, &pkey);
       ESP_LOGI(TAG, "ble_sm_inject_io result: %d", rc);
     } else if (event->passkey.params.action == BLE_SM_IOACT_OOB) {
-      static uint8_t tem_oob[16] = {0};
+      static const uint8_t tem_oob[16] = {0};
       pkey.action = event->passkey.params.action;
       for (int i = 0; i < 16; i++) {
         pkey.oob[i] = tem_oob[i];
@@ -1181,7 +1180,7 @@ esp_err_t esp_hid_scan(uint32_t seconds, size_t *num_results, esp_hid_scan_resul
 
   *num_results = num_bt_scan_results + num_ble_scan_results;
   *results = bt_scan_results;
-  if (num_bt_scan_results) {
+  if (num_bt_scan_results) { // cppcheck-suppress knownConditionTrueFalse
     while (bt_scan_results->next != NULL) {
       bt_scan_results = bt_scan_results->next;
     }

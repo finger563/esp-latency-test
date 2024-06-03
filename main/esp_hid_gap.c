@@ -467,7 +467,6 @@ static void handle_ble_device_result(struct ble_scan_result_evt_param *scan_rst)
   if (adv_name_len && adv_name != NULL) {
     char name[64] = {0};
     memcpy(name, adv_name, adv_name_len);
-    name[adv_name_len] = 0;
     GAP_DBG_PRINTF(", NAME: '%s'", name);
   }
   GAP_DBG_PRINTF("\n");

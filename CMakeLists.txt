@@ -12,7 +12,7 @@ set(EXTRA_COMPONENT_DIRS
 
 set(
   COMPONENTS
-  "main esptool_py driver esp_hid  adc cli filters logger nvs task timer"
+  "main esptool_py bt driver esp_hid adc cli filters logger nvs task timer"
   CACHE STRING
   "List of components to include"
   )

@@ -29,14 +29,20 @@
 #include "esp_log.h"
 
 #include "esp_bt.h"
+#if !CONFIG_BT_NIMBLE_ENABLED
 #include "esp_bt_defs.h"
 #include "esp_bt_main.h"
 #include "esp_gap_bt_api.h"
+#endif
 #include "esp_hid_common.h"
 #if CONFIG_BT_BLE_ENABLED
 #include "esp_gattc_api.h"
 #include "esp_gatt_defs.h"
 #include "esp_gap_ble_api.h"
+#endif
+
+#if CONFIG_BT_NIMBLE_ENABLED
+#include "nimble/ble.h"
 #endif
 
 #ifdef __cplusplus

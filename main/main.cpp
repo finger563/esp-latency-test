@@ -4,6 +4,7 @@
 #include <driver/gpio.h>
 #include <esp_hidh.h>
 
+#include "cli.hpp"
 #include "high_resolution_timer.hpp"
 #include "logger.hpp"
 #include "nvs.hpp"
@@ -11,27 +12,35 @@
 #include "simple_lowpass_filter.hpp"
 #include "task.hpp"
 
-#include "esp_hid_gap.h"
-
 using namespace std::chrono_literals;
 
+#if CONFIG_IDF_TARGET_ESP32
+#include "esp_hid_gap.h"
+
+static std::atomic<bool> connected{false};
+static std::mutex mutex;
+static std::condition_variable cv;
+
 void hidh_callback(void *handler_args, esp_event_base_t base, int32_t id, void *event_data) {
-  esp_hidh_event_t event = (esp_hidh_event_t)event_data;
+  esp_hidh_event_t event = (esp_hidh_event_t)id;
   esp_hidh_event_data_t *param = (esp_hidh_event_data_t *)event_data;
   switch (event) {
   case ESP_HIDH_OPEN_EVENT:
-    printf("ESP_HIDH_OPEN_EVENT\n");
+    if (param->open.status == ESP_OK) {
+      connected = true;
+    }
     break;
   case ESP_HIDH_CLOSE_EVENT:
-    printf("ESP_HIDH_CLOSE_EVENT\n");
+    connected = false;
     break;
   case ESP_HIDH_INPUT_EVENT:
-    printf("ESP_HIDH_INPUT_EVENT\n");
+    cv.notify_all();
     break;
   default:
     break;
   }
 }
+#endif // CONFIG_IDF_TARGET_ESP32
 
 extern "C" void app_main(void) {
   static auto elapsed = [&]() {
@@ -58,6 +67,10 @@ extern "C" void app_main(void) {
     return;
   }
 
+  bool use_hid_host = false;
+
+#if CONFIG_IDF_TARGET_ESP32
+  // Initialize the bluetooth / HID Host
   logger.info("setting hid gap, mode: {}", HID_HOST_MODE);
   ESP_ERROR_CHECK( esp_hid_gap_init(HID_HOST_MODE) );
 
@@ -71,6 +84,153 @@ extern "C" void app_main(void) {
     .callback_arg = NULL,
   };
   ESP_ERROR_CHECK( esp_hidh_init(&config) );
+
+#if CONFIG_BT_NIMBLE_ENABLED
+  ble_store_config_init();
+
+  ble_hs_cfg.store_status_cb = ble_store_util_status_rr;
+  // Starting nimble task after gatts is initialized
+  ret = esp_nimble_enable(ble_hid_host_task);
+  if (ret) {
+    ESP_LOGE(TAG, "esp_nimble_enable failed: %d", ret);
+  }
+#endif // CONFIG_BT_NIMBLE_ENABLED
+
+  // load previous settings (if any) from NVS
+  // - HID Host or PhotoDiode (ADC)
+  // - if using HID Host, select the device to connect to
+  std::string device_name;
+  nvs.get_or_set_var("latency", "use_hid_host", use_hid_host, use_hid_host, ec);
+  if (ec) {
+    logger.error("Failed to get use_hid_host from NVS: {}", ec.message());
+    return;
+  }
+  logger.info("Loaded use_hid_host: {}", use_hid_host);
+  if (use_hid_host) {
+    nvs.get_var("latency", "device_name", device_name, ec);
+    if (ec) {
+      logger.error("Failed to get device_name from NVS: {}", ec.message());
+      return;
+    }
+    logger.info("Loaded device_name: '{}'", device_name);
+  }
+
+  auto root_menu = std::make_unique<cli::Menu>("latency", "Latency Measurement Menu");
+  // make some items for configuring the latency test:
+  // - select whether to use HID Host or PhotoDiode (ADC)
+  // - if using HID Host, select the device to connect to
+  // - save the configuration to NVS
+
+  std::unordered_map<std::string, esp_hid_scan_result_t *> devices;
+  static esp_hid_scan_result_t *results = NULL;
+  auto scan = [&](int seconds = 5) {
+    size_t results_len = 0;
+    if (results) {
+      esp_hid_scan_results_free(results);
+      results = NULL;
+      devices.clear();
+    }
+    esp_hid_scan(seconds, &results_len, &results);
+    // loop through the results and print them
+    if (results_len > 0) {
+      esp_hid_scan_result_t *r = results;
+      while (r) {
+        if (r->name == nullptr) {
+          r = r->next;
+          continue;
+        }
+        devices[r->name] = r;
+        r = r->next;
+      }
+    }
+  };
+
+  auto scan_and_print = [&](std::ostream &out, int seconds = 5) {
+    scan(seconds);
+    if (devices.empty()) {
+      out << "No devices found\n";
+      return;
+    }
+    out << "Devices found:\n";
+    for (const auto &[name, result] : devices) {
+      out << "  '" << name << "'\n";
+    }
+  };
+
+  auto scan_and_connect = [&](std::string device_name) -> bool {
+    scan(5);
+    if (devices.empty()) {
+      logger.error("No devices found");
+      return false;
+    }
+    auto it = devices.find(device_name);
+    if (it == devices.end()) {
+      logger.error("Device '{}' not found", device_name);
+      return false;
+    }
+    auto result = it->second;
+    logger.info("Connecting to device '{}'", device_name);
+    esp_hidh_dev_open(result->bda, result->transport, result->ble.addr_type);
+    return true;
+  };
+
+  root_menu->Insert(
+      "use_hid_host",
+      [&](std::ostream &out) {
+        out << "use_hid_host: " << use_hid_host << "\n";
+      },
+      "Get the current value of use_hid_host");
+  root_menu->Insert(
+      "use_hid_host",
+      {"Use HID Host (true/false)"},
+      [&](std::ostream &out, bool value) {
+        use_hid_host = value;
+        nvs.set_var("latency", "use_hid_host", use_hid_host, ec);
+        out << "use_hid_host: " << use_hid_host << "\n";
+      },
+      "Set the value of use_hid_host");
+
+  root_menu->Insert(
+      "device_name",
+      [&](std::ostream &out) {
+        out << "device_name: " << device_name << "\n";
+      },
+      "Get the current value of device_name");
+  root_menu->Insert(
+      "device_name",
+      {"Device Name"},
+      [&](std::ostream &out, std::string value) {
+        device_name = value;
+        nvs.set_var("latency", "device_name", (const std::string)device_name, ec);
+        out << "device_name: " << device_name << "\n";
+      },
+      "Set the value of device_name");
+
+  root_menu->Insert(
+      "scan",
+      [&](std::ostream &out) {
+        scan_and_print(out);
+      },
+      "Scan for HID devices (5 seconds)");
+
+  root_menu->Insert(
+      "scan",
+      {"seconds"},
+      [&](std::ostream &out, int seconds) {
+        scan_and_print(out, seconds);
+      },
+      "Scan for HID devices");
+
+  // wait 5 seconds for the user to send input over stdin. If receive input, run
+  // the cli, else start the test according to the defaults loaded from NVS.
+
+  // if we've gotten here, either the CLI wasn't entered or the user exited it
+  if (use_hid_host) {
+    while (!scan_and_connect(device_name)) {
+      logger.warn("Failed to connect to device '{}', retrying...", device_name);
+    }
+  }
+#endif // CONFIG_IDF_TARGET_ESP32
 
   std::vector<espp::AdcConfig> channels{
     // A0 on QtPy ESP32S3
@@ -114,6 +274,9 @@ extern "C" void app_main(void) {
   };
 
 #if CONFIG_DEBUG_PLOT_ALL
+  if (use_hid_host) {
+    logger.warning("DEBUG_PLOT_ALL is not supported with HID Host, will log ADC values instead");
+  }
   enum class TestState : uint8_t {
     IDLE = 0,
     RELEASE_DETECTED = 1,
@@ -204,16 +367,26 @@ extern "C" void app_main(void) {
     gpio_set_level(button_pin, BUTTON_PRESSED_LEVEL);
 
     // wait for the button press to be detected
-    while (true) {
-      auto now_us = esp_timer_get_time();
-      latency_us = now_us - button_press_start;
-      // read the ADC
-      if (get_mv() > UPPER_THRESHOLD) {
-        break;
+    if (use_hid_host) {
+      std::unique_lock<std::mutex> lock(mutex);
+      auto retval = cv.wait_for(lock, 500ms);
+      if (retval == std::cv_status::timeout) {
+        logger.error("Timeout waiting for button press to be detected");
+        continue;
       }
-      // timeout
-      if (latency_us > MAX_lATENCY_US) {
-        break;
+      latency_us = esp_timer_get_time() - button_press_start;
+    } else {
+      while (true) {
+        auto now_us = esp_timer_get_time();
+        latency_us = now_us - button_press_start;
+        // read the ADC
+        if (get_mv() > UPPER_THRESHOLD) {
+          break;
+        }
+        // timeout
+        if (latency_us > MAX_lATENCY_US) {
+          break;
+        }
       }
     }
 
@@ -228,16 +401,26 @@ extern "C" void app_main(void) {
     gpio_set_level(button_pin, BUTTON_RELEASED_LEVEL);
 
     // wait for the button release to be detected
-    while (true) {
-      auto now_us = esp_timer_get_time();
-      latency_us = now_us - button_release_start;
-      // read the ADC
-      if (get_mv() < LOWER_THRESHOLD) {
-        break;
+    if (use_hid_host) {
+      std::unique_lock<std::mutex> lock(mutex);
+      auto retval = cv.wait_for(lock, 500ms);
+      if (retval == std::cv_status::timeout) {
+        logger.error("Timeout waiting for button release to be detected");
+        continue;
       }
-      // timeout
-      if (latency_us > MAX_lATENCY_US) {
-        break;
+      latency_us = esp_timer_get_time() - button_release_start;
+    } else {
+      while (true) {
+        auto now_us = esp_timer_get_time();
+        latency_us = now_us - button_release_start;
+        // read the ADC
+        if (get_mv() < LOWER_THRESHOLD) {
+          break;
+        }
+        // timeout
+        if (latency_us > MAX_lATENCY_US) {
+          break;
+        }
       }
     }
 

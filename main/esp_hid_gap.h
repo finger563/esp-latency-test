@@ -4,7 +4,6 @@
  * SPDX-License-Identifier: Unlicense OR CC0-1.0
  */
 
-
 #ifndef _ESP_HID_GAP_H_
 #define _ESP_HID_GAP_H_
 
@@ -36,9 +35,9 @@
 #endif
 #include "esp_hid_common.h"
 #if CONFIG_BT_BLE_ENABLED
-#include "esp_gattc_api.h"
-#include "esp_gatt_defs.h"
 #include "esp_gap_ble_api.h"
+#include "esp_gatt_defs.h"
+#include "esp_gattc_api.h"
 #endif
 
 #if CONFIG_BT_NIMBLE_ENABLED
@@ -50,23 +49,23 @@ extern "C" {
 #endif
 
 typedef struct esp_hidh_scan_result_s {
-    struct esp_hidh_scan_result_s *next;
+  struct esp_hidh_scan_result_s *next;
 
-    esp_bd_addr_t bda;
-    const char *name;
-    int8_t rssi;
-    esp_hid_usage_t usage;
-    esp_hid_transport_t transport; //BT, BLE or USB
-    union {
-        struct {
-            esp_bt_cod_t cod;
-            esp_bt_uuid_t uuid;
-        } bt;
-        struct {
-            esp_ble_addr_type_t addr_type;
-            uint16_t appearance;
-        } ble;
-    };
+  esp_bd_addr_t bda;
+  const char *name;
+  int8_t rssi;
+  esp_hid_usage_t usage;
+  esp_hid_transport_t transport; // BT, BLE or USB
+  union {
+    struct {
+      esp_bt_cod_t cod;
+      esp_bt_uuid_t uuid;
+    } bt;
+    struct {
+      esp_ble_addr_type_t addr_type;
+      uint16_t appearance;
+    } ble;
+  };
 } esp_hid_scan_result_t;
 
 esp_err_t esp_hid_gap_init(uint8_t mode);

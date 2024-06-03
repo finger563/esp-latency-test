@@ -72,18 +72,18 @@ extern "C" void app_main(void) {
 #if CONFIG_IDF_TARGET_ESP32
   // Initialize the bluetooth / HID Host
   logger.info("setting hid gap, mode: {}", HID_HOST_MODE);
-  ESP_ERROR_CHECK( esp_hid_gap_init(HID_HOST_MODE) );
+  ESP_ERROR_CHECK(esp_hid_gap_init(HID_HOST_MODE));
 
 #if CONFIG_BT_BLE_ENABLED
-  ESP_ERROR_CHECK( esp_ble_gattc_register_callback(esp_hidh_gattc_event_handler) );
+  ESP_ERROR_CHECK(esp_ble_gattc_register_callback(esp_hidh_gattc_event_handler));
 #endif // CONFIG_BT_BLE_ENABLED
 
   esp_hidh_config_t config = {
-    .callback = hidh_callback,
-    .event_stack_size = 4096,
-    .callback_arg = NULL,
+      .callback = hidh_callback,
+      .event_stack_size = 4096,
+      .callback_arg = NULL,
   };
-  ESP_ERROR_CHECK( esp_hidh_init(&config) );
+  ESP_ERROR_CHECK(esp_hidh_init(&config));
 
 #if CONFIG_BT_NIMBLE_ENABLED
   ble_store_config_init();
@@ -175,14 +175,10 @@ extern "C" void app_main(void) {
   };
 
   root_menu->Insert(
-      "use_hid_host",
-      [&](std::ostream &out) {
-        out << "use_hid_host: " << use_hid_host << "\n";
-      },
+      "use_hid_host", [&](std::ostream &out) { out << "use_hid_host: " << use_hid_host << "\n"; },
       "Get the current value of use_hid_host");
   root_menu->Insert(
-      "use_hid_host",
-      {"Use HID Host (true/false)"},
+      "use_hid_host", {"Use HID Host (true/false)"},
       [&](std::ostream &out, bool value) {
         use_hid_host = value;
         nvs.set_var("latency", "use_hid_host", use_hid_host, ec);
@@ -191,14 +187,10 @@ extern "C" void app_main(void) {
       "Set the value of use_hid_host");
 
   root_menu->Insert(
-      "device_name",
-      [&](std::ostream &out) {
-        out << "device_name: " << device_name << "\n";
-      },
+      "device_name", [&](std::ostream &out) { out << "device_name: " << device_name << "\n"; },
       "Get the current value of device_name");
   root_menu->Insert(
-      "device_name",
-      {"Device Name"},
+      "device_name", {"Device Name"},
       [&](std::ostream &out, std::string value) {
         device_name = value;
         nvs.set_var("latency", "device_name", (const std::string)device_name, ec);
@@ -207,18 +199,10 @@ extern "C" void app_main(void) {
       "Set the value of device_name");
 
   root_menu->Insert(
-      "scan",
-      [&](std::ostream &out) {
-        scan_and_print(out);
-      },
-      "Scan for HID devices (5 seconds)");
+      "scan", [&](std::ostream &out) { scan_and_print(out); }, "Scan for HID devices (5 seconds)");
 
   root_menu->Insert(
-      "scan",
-      {"seconds"},
-      [&](std::ostream &out, int seconds) {
-        scan_and_print(out, seconds);
-      },
+      "scan", {"seconds"}, [&](std::ostream &out, int seconds) { scan_and_print(out, seconds); },
       "Scan for HID devices");
 
   // wait 5 seconds for the user to send input over stdin. If receive input, run
@@ -233,12 +217,12 @@ extern "C" void app_main(void) {
 #endif // CONFIG_IDF_TARGET_ESP32
 
   std::vector<espp::AdcConfig> channels{
-    // A0 on QtPy ESP32S3
-    {.unit = ADC_UNIT, .channel = ADC_CHANNEL, .attenuation = ADC_ATTEN_DB_12}};
+      // A0 on QtPy ESP32S3
+      {.unit = ADC_UNIT, .channel = ADC_CHANNEL, .attenuation = ADC_ATTEN_DB_12}};
   espp::OneshotAdc adc({
       .unit = ADC_UNIT,
       .channels = channels,
-    });
+  });
 
   gpio_set_direction(button_pin, GPIO_MODE_OUTPUT);
   gpio_set_level(button_pin, BUTTON_RELEASED_LEVEL);
@@ -261,14 +245,14 @@ extern "C" void app_main(void) {
 #if CONFIG_FILTER_ADC
   // filter the ADC readings
   static constexpr float ALPHA = CONFIG_FILTER_ALPHA / 1e3f;
-  espp::SimpleLowpassFilter filter({.time_constant=ALPHA});
+  espp::SimpleLowpassFilter filter({.time_constant = ALPHA});
 #endif // CONFIG_FILTER_ADC
 
   auto get_mv = [&]() {
     auto voltages = adc.read_all_mv();
 #if CONFIG_FILTER_ADC
     return filter(voltages[0]);
-#else // CONFIG_FILTER_ADC
+#else  // CONFIG_FILTER_ADC
     return voltages[0];
 #endif // CONFIG_FILTER_ADC
   };
@@ -291,53 +275,51 @@ extern "C" void app_main(void) {
   logger.info("Starting latency test, DEBUG_PLOT_ALL enabled");
 
   fmt::print("% time (s), state * 50, adc (mV), latency (ms)\n");
-  espp::HighResolutionTimer timer({
-      .name = "logging timer",
-      .callback = [&]() {
-        auto mv = get_mv();
-        auto now_us = esp_timer_get_time();
-        uint64_t t = now_us % PERIOD_US;
+  espp::HighResolutionTimer timer(
+      {.name = "logging timer", .callback = [&]() {
+         auto mv = get_mv();
+         auto now_us = esp_timer_get_time();
+         uint64_t t = now_us % PERIOD_US;
 
-        // reset the state at the beginning of the period
-        if (t < IDLE_US) {
-          shift = (rand() % MAX_SHIFT_MS) * 1000;
-          button_pressed = false;
-          state = TestState::IDLE;
-          button_press_start = 0;
-          button_release_start = 0;
-        }
+         // reset the state at the beginning of the period
+         if (t < IDLE_US) {
+           shift = (rand() % MAX_SHIFT_MS) * 1000;
+           button_pressed = false;
+           state = TestState::IDLE;
+           button_press_start = 0;
+           button_release_start = 0;
+         }
 
-        // trigger a button press
-        if (state == TestState::IDLE && t >= (IDLE_US + shift)) {
-          state = TestState::BUTTON_PRESSED;
-          button_pressed = true;
-          gpio_set_level(button_pin, BUTTON_PRESSED_LEVEL);
-          button_press_start = now_us;
-        }
+         // trigger a button press
+         if (state == TestState::IDLE && t >= (IDLE_US + shift)) {
+           state = TestState::BUTTON_PRESSED;
+           button_pressed = true;
+           gpio_set_level(button_pin, BUTTON_PRESSED_LEVEL);
+           button_press_start = now_us;
+         }
 
-        // try to detect the button press
-        if (state == TestState::BUTTON_PRESSED && mv > UPPER_THRESHOLD) {
-          state = TestState::PRESS_DETECTED;
-          latency_us = now_us - button_press_start;
-        }
+         // try to detect the button press
+         if (state == TestState::BUTTON_PRESSED && mv > UPPER_THRESHOLD) {
+           state = TestState::PRESS_DETECTED;
+           latency_us = now_us - button_press_start;
+         }
 
-        // trigger a button release if it's held long enough
-        if (button_pressed && t > (IDLE_US + HOLD_TIME_US + shift)) {
-          state = TestState::BUTTON_RELEASED;
-          gpio_set_level(button_pin, BUTTON_RELEASED_LEVEL);
-          button_release_start = now_us;
-          button_pressed = false;
-        }
+         // trigger a button release if it's held long enough
+         if (button_pressed && t > (IDLE_US + HOLD_TIME_US + shift)) {
+           state = TestState::BUTTON_RELEASED;
+           gpio_set_level(button_pin, BUTTON_RELEASED_LEVEL);
+           button_release_start = now_us;
+           button_pressed = false;
+         }
 
-        // try to detect the button release
-        if (state == TestState::BUTTON_RELEASED && mv < LOWER_THRESHOLD) {
-          state = TestState::RELEASE_DETECTED;
-          latency_us = now_us - button_release_start;
-        }
+         // try to detect the button release
+         if (state == TestState::BUTTON_RELEASED && mv < LOWER_THRESHOLD) {
+           state = TestState::RELEASE_DETECTED;
+           latency_us = now_us - button_release_start;
+         }
 
-        fmt::print("{:.3f}, {}, {}, {:.3f}\n", elapsed(), (int)state * 50, mv, latency_us / 1e3f);
-      }
-    });
+         fmt::print("{:.3f}, {}, {}, {:.3f}\n", elapsed(), (int)state * 50, mv, latency_us / 1e3f);
+       }});
   uint64_t timer_period_us = 5 * 1000; // 5ms
   timer.periodic(timer_period_us);
 

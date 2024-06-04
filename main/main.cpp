@@ -526,6 +526,10 @@ void init_hid() {
 #endif // CONFIG_BT_NIMBLE_ENABLED
 }
 
+static const std::string ble_min_nvs_key = "ble_min";
+static const std::string ble_max_nvs_key = "ble_max";
+static const std::string bt_qos_nvs_key = "bt_qos";
+
 void load_nvs(espp::Nvs &nvs) {
   std::error_code ec;
   // - HID Host or PhotoDiode (ADC)
@@ -569,28 +573,30 @@ void load_nvs(espp::Nvs &nvs) {
     }
     logger.info("Loaded input_report_id: {}", input_report_id);
     // get the BLE connection parameters (min interval)
-    nvs.get_or_set_var("latency", "ble_min_interval_units", ble_min_interval_units,
-                       ble_min_interval_units, ec);
+    nvs.get_or_set_var("latency", ble_min_nvs_key, ble_min_interval_units, ble_min_interval_units,
+                       ec);
     if (ec) {
       logger.error("Failed to get ble_min_interval_units from NVS: {}", ec.message());
       return;
     }
-    logger.info("Loaded ble_min_interval_units: {}", ble_min_interval_units);
+    logger.info("Loaded ble_min_interval_units: {} = {} ms", ble_min_interval_units,
+                ble_interval_units_to_ms(ble_min_interval_units));
     // get the BLE connection parameters (max interval)
-    nvs.get_or_set_var("latency", "ble_max_interval_units", ble_max_interval_units,
-                       ble_max_interval_units, ec);
+    nvs.get_or_set_var("latency", ble_max_nvs_key, ble_max_interval_units, ble_max_interval_units,
+                       ec);
     if (ec) {
       logger.error("Failed to get ble_max_interval_units from NVS: {}", ec.message());
       return;
     }
-    logger.info("Loaded ble_max_interval_units: {}", ble_max_interval_units);
+    logger.info("Loaded ble_max_interval_units: {} = {} ms", ble_max_interval_units,
+                ble_interval_units_to_ms(ble_max_interval_units));
     // get the BT connection parameters
-    nvs.get_or_set_var("latency", "bt_qos_units", bt_qos_units, bt_qos_units, ec);
+    nvs.get_or_set_var("latency", bt_qos_nvs_key, bt_qos_units, bt_qos_units, ec);
     if (ec) {
       logger.error("Failed to get bt_qos_units from NVS: {}", ec.message());
       return;
     }
-    logger.info("Loaded bt_qos_units: {}", bt_qos_units);
+    logger.info("Loaded bt_qos_units: {} = {} ms", bt_qos_units, bt_qos_units_to_ms(bt_qos_units));
   }
 }
 
@@ -679,9 +685,8 @@ void build_menu(std::unique_ptr<cli::Menu> &root_menu, espp::Nvs &nvs) {
   root_menu->Insert(
       "ble_min_interval",
       [&](std::ostream &out) {
-        out << "ble_min_interval_units: " << (int)ble_min_interval_units << " \n";
-        out << "                      : " << ble_interval_units_to_ms(ble_min_interval_units)
-            << " ms\n";
+        out << "ble_min_interval_units: " << (int)ble_min_interval_units << " = "
+            << (int)ble_interval_units_to_ms(ble_min_interval_units) << " ms\n";
       },
       "Get the current value of ble_min_interval");
   root_menu->Insert(
@@ -689,13 +694,12 @@ void build_menu(std::unique_ptr<cli::Menu> &root_menu, espp::Nvs &nvs) {
       [&](std::ostream &out, int value) {
         ble_min_interval_units = ble_interval_ms_to_units(value);
         std::error_code ec;
-        nvs.set_var("latency", "ble_min_interval_units", ble_min_interval_units, ec);
+        nvs.set_var("latency", ble_min_nvs_key, ble_min_interval_units, ec);
         if (ec) {
           out << "Failed to set ble_min_interval_units: " << ec.message() << "\n";
         } else {
-          out << "ble_min_interval_units: " << (int)ble_min_interval_units << " \n";
-          out << "                      : " << ble_interval_units_to_ms(ble_min_interval_units)
-              << " ms\n";
+          out << "ble_min_interval_units: " << (int)ble_min_interval_units << " = "
+              << (int)ble_interval_units_to_ms(ble_min_interval_units) << " ms\n";
         }
       },
       "Set the value of ble_min_interval");
@@ -703,9 +707,8 @@ void build_menu(std::unique_ptr<cli::Menu> &root_menu, espp::Nvs &nvs) {
   root_menu->Insert(
       "ble_max_interval",
       [&](std::ostream &out) {
-        out << "ble_max_interval_units: " << (int)ble_max_interval_units << " \n";
-        out << "                      : " << ble_interval_units_to_ms(ble_max_interval_units)
-            << " ms\n";
+        out << "ble_max_interval_units: " << (int)ble_max_interval_units << " = "
+            << (int)ble_interval_units_to_ms(ble_max_interval_units) << " ms\n";
       },
       "Get the current value of ble_max_interval");
   root_menu->Insert(
@@ -713,13 +716,12 @@ void build_menu(std::unique_ptr<cli::Menu> &root_menu, espp::Nvs &nvs) {
       [&](std::ostream &out, int value) {
         ble_max_interval_units = ble_interval_ms_to_units(value);
         std::error_code ec;
-        nvs.set_var("latency", "ble_max_interval_units", ble_max_interval_units, ec);
+        nvs.set_var("latency", ble_max_nvs_key, ble_max_interval_units, ec);
         if (ec) {
           out << "Failed to set ble_max_interval_units: " << ec.message() << "\n";
         } else {
-          out << "ble_max_interval_units: " << (int)ble_max_interval_units << " \n";
-          out << "                      : " << ble_interval_units_to_ms(ble_max_interval_units)
-              << " ms\n";
+          out << "ble_max_interval_units: " << (int)ble_max_interval_units << " = "
+              << (int)ble_interval_units_to_ms(ble_max_interval_units) << " ms\n";
         }
       },
       "Set the value of ble_max_interval");
@@ -728,8 +730,8 @@ void build_menu(std::unique_ptr<cli::Menu> &root_menu, espp::Nvs &nvs) {
   root_menu->Insert(
       "bt_qos",
       [&](std::ostream &out) {
-        out << "bt_qos_units: " << (int)bt_qos_units << " \n";
-        out << "             : " << bt_qos_units_to_ms(bt_qos_units) << " ms\n";
+        out << "bt_qos_units: " << (int)bt_qos_units << " = "
+            << (int)bt_qos_units_to_ms(bt_qos_units) << " ms\n";
       },
       "Get the current value of bt_qos");
   root_menu->Insert(
@@ -737,12 +739,12 @@ void build_menu(std::unique_ptr<cli::Menu> &root_menu, espp::Nvs &nvs) {
       [&](std::ostream &out, int value) {
         bt_qos_units = bt_qos_ms_to_units(value);
         std::error_code ec;
-        nvs.set_var("latency", "bt_qos_units", bt_qos_units, ec);
+        nvs.set_var("latency", bt_qos_nvs_key, bt_qos_units, ec);
         if (ec) {
           out << "Failed to set bt_qos_units: " << ec.message() << "\n";
         } else {
-          out << "bt_qos_units: " << (int)bt_qos_units << " \n";
-          out << "             : " << bt_qos_units_to_ms(bt_qos_units) << " ms\n";
+          out << "bt_qos_units: " << (int)bt_qos_units << " = "
+              << (int)bt_qos_units_to_ms(bt_qos_units) << " ms\n";
         }
       },
       "Set the value of bt_qos");

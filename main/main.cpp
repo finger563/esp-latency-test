@@ -17,6 +17,9 @@ using namespace std::chrono_literals;
 #if CONFIG_IDF_TARGET_ESP32
 #include "esp_hid_gap.h"
 
+static bool parse_input{false};
+static uint8_t input_report_id{1};
+static bool is_ble{false};
 static std::atomic<bool> connected{false};
 static std::mutex mutex;
 static std::condition_variable cv;
@@ -29,18 +32,29 @@ void hidh_callback(void *handler_args, esp_event_base_t base, int32_t id, void *
     if (param->open.status == ESP_OK) {
       fmt::print("Connected to device\n");
       connected = true;
-#if CONFIG_BT_BLE_ENABLED
-      // if BLE, update the connection parameters
       const uint8_t *bda = esp_hidh_dev_bda_get(param->open.dev);
-      esp_ble_conn_update_params_t conn_params = {
-          .bda = {0},
-          .min_int = 12, // * 1.25ms = 15ms
-          .max_int = 48, // * 1.25ms = 60ms
-          .latency = 0,
-          .timeout = 400,
-      };
-      memcpy(conn_params.bda, bda, ESP_BD_ADDR_LEN);
-      esp_ble_gap_update_conn_params(&conn_params);
+#if CONFIG_BT_CLASSIC_ENABLED
+      if (!is_ble) {
+        // if BT, update the connection parameters
+        // max time between packets = 60ms
+        fmt::print("Setting QoS to 60ms\n");
+        esp_bt_gap_set_qos((uint8_t *)bda, 96); // * 0.625ms = 60ms
+      }
+#endif // CONFIG_BT_CLASSIC_ENABLED
+#if CONFIG_BT_BLE_ENABLED
+      if (is_ble) {
+        // if BLE, update the connection parameters
+        esp_ble_conn_update_params_t conn_params = {
+            .bda = {0},
+            .min_int = 12, // * 1.25ms = 15ms
+            .max_int = 24, // * 1.25ms = 30ms
+            .latency = 0,
+            .timeout = 400,
+        };
+        memcpy(conn_params.bda, bda, ESP_BD_ADDR_LEN);
+        fmt::print("Setting BLE connection parameters\n");
+        esp_ble_gap_update_conn_params(&conn_params);
+      }
 #endif // CONFIG_BT_BLE_ENABLED
     } else {
       fmt::print("Failed to connect to device\n");
@@ -50,9 +64,34 @@ void hidh_callback(void *handler_args, esp_event_base_t base, int32_t id, void *
     fmt::print("Disconnected from device\n");
     connected = false;
     break;
-  case ESP_HIDH_INPUT_EVENT:
-    cv.notify_all();
-    break;
+  case ESP_HIDH_INPUT_EVENT: {
+    // for most controllers, they only send input reports when the state changes
+    if (!parse_input) {
+      std::unique_lock<std::mutex> lock(mutex);
+      cv.notify_all();
+      break;
+    }
+    // if we get here, we have to parse the input -.-
+    // pull out the report id from the HID report
+    uint8_t report_id = param->input.report_id;
+    // ignore if it isn't the report we're looking for
+    if (report_id != input_report_id) {
+      break;
+    }
+    // for now we'll just hardcode the report parsing...
+    // buttons are bytes 4 and 5 (0 index)
+    // pull out the button state from the HID report
+    uint16_t button_state = param->input.data[4] | (param->input.data[5] << 8);
+    // initialize it to something it _shouldn't_ be so that first report comes
+    // through as well.
+    static auto last_button_state = 0;
+    // if the button is pressed, notify the main thread
+    if (button_state != last_button_state) {
+      std::unique_lock<std::mutex> lock(mutex);
+      cv.notify_all();
+    }
+    last_button_state = button_state;
+  } break;
   default:
     break;
   }
@@ -142,6 +181,20 @@ extern "C" void app_main(void) {
       logger.info("Loaded device_address: '{}'", device_address);
     }
     ec.clear();
+    // get whether or not we have to parse the input report
+    nvs.get_or_set_var("latency", "parse_input", parse_input, parse_input, ec);
+    if (ec) {
+      logger.error("Failed to get parse_input from NVS: {}", ec.message());
+      return;
+    }
+    logger.info("Loaded parse_input: {}", parse_input);
+    // get the input report id
+    nvs.get_or_set_var("latency", "input_report_id", input_report_id, input_report_id, ec);
+    if (ec) {
+      logger.error("Failed to get input_report_id from NVS: {}", ec.message());
+      return;
+    }
+    logger.info("Loaded input_report_id: {}", input_report_id);
   }
 
   auto root_menu = std::make_unique<cli::Menu>("latency", "Latency Measurement Menu");
@@ -169,7 +222,7 @@ extern "C" void app_main(void) {
         bool is_gamepad = r->usage == ESP_HID_USAGE_GAMEPAD;
         std::string address =
             fmt::format("{:02x}:{:02x}:{:02x}:{:02x}:{:02x}:{:02x}", ESP_BD_ADDR_HEX(r->bda));
-        std::string name = has_name ? r->name : address;
+        std::string name = has_name ? std::string(r->name) : address;
         logger.info("Found device: {} ({}), addr: {}", name, is_gamepad ? "Gamepad" : "Unknown",
                     address);
         // use either the name (if it exists) or the address as the key
@@ -211,7 +264,10 @@ extern "C" void app_main(void) {
     logger.info("Connecting to device '{}'", remote_name);
     logger.info("          at address {:02x}:{:02x}:{:02x}:{:02x}:{:02x}:{:02x}",
                 ESP_BD_ADDR_HEX(result->bda));
+#if CONFIG_BT_CLASSIC_ENABLED && CONFIG_BT_BLE_ENABLED
     if (result->transport == ESP_HID_TRANSPORT_BLE) {
+      is_ble = true;
+#endif // CONFIG_BT_CLASSIC_ENABLED
       logger.info("          using BLE, addr_type: {}", (int)result->ble.addr_type);
 
       // if BLE, update the connection parameters
@@ -221,10 +277,13 @@ extern "C" void app_main(void) {
 
       // now connect
       esp_hidh_dev_open(result->bda, ESP_HID_TRANSPORT_BLE, result->ble.addr_type);
+#if CONFIG_BT_CLASSIC_ENABLED && CONFIG_BT_BLE_ENABLED
     } else {
+      is_ble = false;
       logger.info("          using BT");
       esp_hidh_dev_open(result->bda, ESP_HID_TRANSPORT_BT, 0);
     }
+#endif // CONFIG_BT_CLASSIC_ENABLED
     // now free the results
     esp_hid_scan_results_free(results);
     return true;
@@ -239,7 +298,7 @@ extern "C" void app_main(void) {
     return connect(device_name, device_address);
   };
 
-  // menu functions for getting / setting use_hid_host and device_name
+  // menu functions for getting / setting use_hid_host
   root_menu->Insert(
       "use_hid_host", [&](std::ostream &out) { out << "use_hid_host: " << use_hid_host << "\n"; },
       "Get the current value of use_hid_host");
@@ -257,6 +316,44 @@ extern "C" void app_main(void) {
       },
       "Set the value of use_hid_host");
 
+  // menu functions for getting / setting parse_input
+  root_menu->Insert(
+      "parse_input", [&](std::ostream &out) { out << "parse_input: " << parse_input << "\n"; },
+      "Get the current value of parse_input");
+  root_menu->Insert(
+      "parse_input", {"Parse Input (true/false)"},
+      [&](std::ostream &out, bool value) {
+        parse_input = value;
+        std::error_code ec;
+        nvs.set_var("latency", "parse_input", parse_input, ec);
+        if (ec) {
+          out << "Failed to set parse_input: " << ec.message() << "\n";
+        } else {
+          out << "parse_input: " << parse_input << "\n";
+        }
+      },
+      "Set the value of parse_input");
+
+  // menu functions for getting / setting input_report_id
+  root_menu->Insert(
+      "input_report_id",
+      [&](std::ostream &out) { out << "input_report_id: " << (int)input_report_id << "\n"; },
+      "Get the current value of input_report_id");
+  root_menu->Insert(
+      "input_report_id", {"Input Report ID (0-255)"},
+      [&](std::ostream &out, int value) {
+        input_report_id = value;
+        std::error_code ec;
+        nvs.set_var("latency", "input_report_id", input_report_id, ec);
+        if (ec) {
+          out << "Failed to set input_report_id: " << ec.message() << "\n";
+        } else {
+          out << "input_report_id: " << (int)input_report_id << "\n";
+        }
+      },
+      "Set the value of input_report_id");
+
+  // add menu functions for getting / setting device_name
   root_menu->Insert(
       "device_name", [&](std::ostream &out) { out << "device_name: " << device_name << "\n"; },
       "Get the current value of device_name");
@@ -275,6 +372,7 @@ extern "C" void app_main(void) {
           auto result = devices[device_name];
           device_address = fmt::format("{:02x}:{:02x}:{:02x}:{:02x}:{:02x}:{:02x}",
                                        ESP_BD_ADDR_HEX(result->bda));
+          out << "device_address: " << device_address << "\n";
           nvs.set_var("latency", "device_address", (const std::string)device_address, ec);
         }
       },

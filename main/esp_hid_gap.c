@@ -511,6 +511,12 @@ static void bt_gap_event_handler(esp_bt_gap_cb_event_t event, esp_bt_gap_cb_para
     ESP_LOGI(TAG, "BT GAP KEY_REQ_EVT Please enter passkey!");
     break;
 #endif
+  case ESP_BT_GAP_QOS_CMPL_EVT: {
+    ESP_LOGI(TAG, "BT GAP QOS_CMPL");
+    uint32_t t_poll = param->qos_cmpl.t_poll;
+    float ms = t_poll * 0.625f;
+    ESP_LOGI(TAG, "t_poll: %d, %f ms", t_poll, ms);
+  } break;
   case ESP_BT_GAP_MODE_CHG_EVT:
     ESP_LOGI(TAG, "BT GAP MODE_CHG_EVT mode:%d", param->mode_chg.mode);
     break;

@@ -340,7 +340,7 @@ void hidh_callback(void *handler_args, esp_event_base_t base, int32_t id, void *
     if (param->open.status == ESP_OK) {
       fmt::print("Connected to device\n");
       connected = true;
-      const uint8_t *bda = esp_hidh_dev_bda_get(param->open.dev);
+      [[maybe_unused]] const uint8_t *bda = esp_hidh_dev_bda_get(param->open.dev);
 #if CONFIG_BT_CLASSIC_ENABLED
       if (!is_ble) {
         // if BT, update the connection parameters

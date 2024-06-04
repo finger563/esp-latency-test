@@ -37,6 +37,9 @@ static std::string device_name{};
 static std::string device_address{};
 static bool parse_input{false};
 static uint8_t input_report_id{1};
+static uint8_t ble_min_interval_units{12}; // 15ms
+static uint8_t ble_max_interval_units{80}; // 100ms
+static uint8_t bt_qos_units{96};           // 60ms
 
 // runtime state for HID mode
 static bool is_ble{false};
@@ -52,6 +55,10 @@ void load_nvs(espp::Nvs &nvs);
 void build_menu(std::unique_ptr<cli::Menu> &root_menu, espp::Nvs &nvs);
 
 // HID / BT / BLE functions
+uint8_t ble_interval_ms_to_units(uint16_t interval_ms) { return interval_ms / 1.25f; }
+uint8_t ble_interval_units_to_ms(uint8_t interval_units) { return interval_units * 1.25f; }
+uint8_t bt_qos_ms_to_units(uint16_t qos_ms) { return qos_ms / 0.625f; }
+uint16_t bt_qos_units_to_ms(uint8_t qos_units) { return qos_units * 0.625f; }
 void scan(int seconds = 5);
 void scan_and_print(std::ostream &out, int seconds = 5);
 bool connect(const std::string &remote_name, const std::string &remote_address = "");
@@ -344,9 +351,9 @@ void hidh_callback(void *handler_args, esp_event_base_t base, int32_t id, void *
 #if CONFIG_BT_CLASSIC_ENABLED
       if (!is_ble) {
         // if BT, update the connection parameters
-        // max time between packets = 60ms
-        fmt::print("Setting QoS to 60ms\n");
-        esp_bt_gap_set_qos((uint8_t *)bda, 96); // * 0.625ms = 60ms
+        // max time between packets
+        fmt::print("Setting QoS\n");
+        esp_bt_gap_set_qos((uint8_t *)bda, bt_qos_units);
       }
 #endif // CONFIG_BT_CLASSIC_ENABLED
 #if CONFIG_BT_BLE_ENABLED
@@ -354,8 +361,8 @@ void hidh_callback(void *handler_args, esp_event_base_t base, int32_t id, void *
         // if BLE, update the connection parameters
         esp_ble_conn_update_params_t conn_params = {
             .bda = {0},
-            .min_int = 12, // * 1.25ms = 15ms
-            .max_int = 24, // * 1.25ms = 30ms
+            .min_int = ble_min_interval_units, // * 1.25ms
+            .max_int = ble_max_interval_units, // * 1.25ms
             .latency = 0,
             .timeout = 400,
         };
@@ -470,9 +477,8 @@ bool connect(const std::string &remote_name, const std::string &remote_address) 
     logger.info("          using BLE, addr_type: {}", (int)result->ble.addr_type);
 
     // if BLE, update the connection parameters
-    static constexpr uint16_t min_interval = 12; // 15ms
-    static constexpr uint16_t max_interval = 80; // 100ms
-    esp_ble_gap_set_prefer_conn_params(result->bda, min_interval, max_interval, 0, 400);
+    esp_ble_gap_set_prefer_conn_params(result->bda, ble_min_interval_units, ble_max_interval_units,
+                                       0, 400);
 
     // now connect
     esp_hidh_dev_open(result->bda, ESP_HID_TRANSPORT_BLE, result->ble.addr_type);
@@ -562,6 +568,29 @@ void load_nvs(espp::Nvs &nvs) {
       return;
     }
     logger.info("Loaded input_report_id: {}", input_report_id);
+    // get the BLE connection parameters (min interval)
+    nvs.get_or_set_var("latency", "ble_min_interval_units", ble_min_interval_units,
+                       ble_min_interval_units, ec);
+    if (ec) {
+      logger.error("Failed to get ble_min_interval_units from NVS: {}", ec.message());
+      return;
+    }
+    logger.info("Loaded ble_min_interval_units: {}", ble_min_interval_units);
+    // get the BLE connection parameters (max interval)
+    nvs.get_or_set_var("latency", "ble_max_interval_units", ble_max_interval_units,
+                       ble_max_interval_units, ec);
+    if (ec) {
+      logger.error("Failed to get ble_max_interval_units from NVS: {}", ec.message());
+      return;
+    }
+    logger.info("Loaded ble_max_interval_units: {}", ble_max_interval_units);
+    // get the BT connection parameters
+    nvs.get_or_set_var("latency", "bt_qos_units", bt_qos_units, bt_qos_units, ec);
+    if (ec) {
+      logger.error("Failed to get bt_qos_units from NVS: {}", ec.message());
+      return;
+    }
+    logger.info("Loaded bt_qos_units: {}", bt_qos_units);
   }
 }
 
@@ -645,6 +674,78 @@ void build_menu(std::unique_ptr<cli::Menu> &root_menu, espp::Nvs &nvs) {
         }
       },
       "Set the value of device_name");
+
+  // add menu functions for getting / setting ble connection parameters
+  root_menu->Insert(
+      "ble_min_interval",
+      [&](std::ostream &out) {
+        out << "ble_min_interval_units: " << (int)ble_min_interval_units << " \n";
+        out << "                      : " << ble_interval_units_to_ms(ble_min_interval_units)
+            << " ms\n";
+      },
+      "Get the current value of ble_min_interval");
+  root_menu->Insert(
+      "ble_min_interval", {"BLE Min interval (ms)"},
+      [&](std::ostream &out, int value) {
+        ble_min_interval_units = ble_interval_ms_to_units(value);
+        std::error_code ec;
+        nvs.set_var("latency", "ble_min_interval_units", ble_min_interval_units, ec);
+        if (ec) {
+          out << "Failed to set ble_min_interval_units: " << ec.message() << "\n";
+        } else {
+          out << "ble_min_interval_units: " << (int)ble_min_interval_units << " \n";
+          out << "                      : " << ble_interval_units_to_ms(ble_min_interval_units)
+              << " ms\n";
+        }
+      },
+      "Set the value of ble_min_interval");
+
+  root_menu->Insert(
+      "ble_max_interval",
+      [&](std::ostream &out) {
+        out << "ble_max_interval_units: " << (int)ble_max_interval_units << " \n";
+        out << "                      : " << ble_interval_units_to_ms(ble_max_interval_units)
+            << " ms\n";
+      },
+      "Get the current value of ble_max_interval");
+  root_menu->Insert(
+      "ble_max_interval", {"BLE max interval (ms)"},
+      [&](std::ostream &out, int value) {
+        ble_max_interval_units = ble_interval_ms_to_units(value);
+        std::error_code ec;
+        nvs.set_var("latency", "ble_max_interval_units", ble_max_interval_units, ec);
+        if (ec) {
+          out << "Failed to set ble_max_interval_units: " << ec.message() << "\n";
+        } else {
+          out << "ble_max_interval_units: " << (int)ble_max_interval_units << " \n";
+          out << "                      : " << ble_interval_units_to_ms(ble_max_interval_units)
+              << " ms\n";
+        }
+      },
+      "Set the value of ble_max_interval");
+
+  // add menu functions for getting / setting bt connection parameters
+  root_menu->Insert(
+      "bt_qos",
+      [&](std::ostream &out) {
+        out << "bt_qos_units: " << (int)bt_qos_units << " \n";
+        out << "             : " << bt_qos_units_to_ms(bt_qos_units) << " ms\n";
+      },
+      "Get the current value of bt_qos");
+  root_menu->Insert(
+      "bt_qos", {"BT QoS (ms)"},
+      [&](std::ostream &out, int value) {
+        bt_qos_units = bt_qos_ms_to_units(value);
+        std::error_code ec;
+        nvs.set_var("latency", "bt_qos_units", bt_qos_units, ec);
+        if (ec) {
+          out << "Failed to set bt_qos_units: " << ec.message() << "\n";
+        } else {
+          out << "bt_qos_units: " << (int)bt_qos_units << " \n";
+          out << "             : " << bt_qos_units_to_ms(bt_qos_units) << " ms\n";
+        }
+      },
+      "Set the value of bt_qos");
 
   root_menu->Insert(
       "scan", [&](std::ostream &out) { scan_and_print(out); }, "Scan for HID devices (5 seconds)");

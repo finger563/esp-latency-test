@@ -40,13 +40,15 @@ static std::shared_ptr<espp::OneshotAdc> adc{nullptr};
 static bool use_hid_host{false};
 static std::string device_name{};
 static std::string device_address{};
-static bool parse_input{false};
-static uint8_t input_report_id{1};
-static uint8_t input_report_button_byte_0{0}; // 0 for pro controller, 4 for ps5
-static uint8_t input_report_button_byte_1{1}; // 1 for pro controller, 5 for ps5
-static uint8_t ble_min_interval_units{12};    // 15ms
-static uint8_t ble_max_interval_units{80};    // 100ms
-static uint8_t bt_qos_units{96};              // 60ms
+static bool parse_input{false};    // false for most controllers, true for pro controller and ps5
+static uint8_t input_report_id{1}; // 63 for pro controller, 1 for basically everything else
+static uint8_t input_report_button_byte_0{
+    0}; // 0 for pro controller, 4 for ps5, unneeded for most controllers
+static uint8_t input_report_button_byte_1{
+    1}; // 1 for pro controller, 5 for ps5, unneeded for most controllers
+static uint8_t ble_min_interval_units{12}; // 15ms
+static uint8_t ble_max_interval_units{24}; // 30ms
+static uint8_t bt_qos_units{0};            // disabled by default
 
 // runtime state for HID mode
 static bool is_ble{false};

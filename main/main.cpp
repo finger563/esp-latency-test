@@ -42,9 +42,11 @@ static std::string device_name{};
 static std::string device_address{};
 static bool parse_input{false};
 static uint8_t input_report_id{1};
-static uint8_t ble_min_interval_units{12}; // 15ms
-static uint8_t ble_max_interval_units{80}; // 100ms
-static uint8_t bt_qos_units{96};           // 60ms
+static uint8_t input_report_button_byte_0{0}; // 0 for pro controller, 4 for ps5
+static uint8_t input_report_button_byte_1{1}; // 1 for pro controller, 5 for ps5
+static uint8_t ble_min_interval_units{12};    // 15ms
+static uint8_t ble_max_interval_units{80};    // 100ms
+static uint8_t bt_qos_units{96};              // 60ms
 
 // runtime state for HID mode
 static bool is_ble{false};
@@ -418,10 +420,9 @@ void hidh_callback(void *handler_args, esp_event_base_t base, int32_t id, void *
     if (report_id != input_report_id) {
       break;
     }
-    // for now we'll just hardcode the report parsing...
-    // buttons are bytes 4 and 5 (0 index)
     // pull out the button state from the HID report
-    uint16_t button_state = param->input.data[4] | (param->input.data[5] << 8);
+    uint16_t button_state = param->input.data[input_report_button_byte_0] |
+                            (param->input.data[input_report_button_byte_1] << 8);
     // initialize it to something it _shouldn't_ be so that first report comes
     // through as well.
     static auto last_button_state = 0;
@@ -606,6 +607,22 @@ void load_nvs(espp::Nvs &nvs) {
       return;
     }
     logger.info("Loaded input_report_id: {}", input_report_id);
+    // get the input report button byte 0
+    nvs.get_or_set_var("latency", "rp_byte0", input_report_button_byte_0,
+                       input_report_button_byte_0, ec);
+    if (ec) {
+      logger.error("Failed to get input_report_button_byte_0 from NVS: {}", ec.message());
+      return;
+    }
+    logger.info("Loaded input_report_button_byte_0: {}", input_report_button_byte_0);
+    // get the input report button byte 1
+    nvs.get_or_set_var("latency", "rp_byte1", input_report_button_byte_1,
+                       input_report_button_byte_1, ec);
+    if (ec) {
+      logger.error("Failed to get input_report_button_byte_1 from NVS: {}", ec.message());
+      return;
+    }
+    logger.info("Loaded input_report_button_byte_1: {}", input_report_button_byte_1);
     // get the BLE connection parameters (min interval)
     nvs.get_or_set_var("latency", ble_min_nvs_key, ble_min_interval_units, ble_min_interval_units,
                        ec);
@@ -728,6 +745,48 @@ void build_menu(std::unique_ptr<cli::Menu> &root_menu, espp::Nvs &nvs) {
         }
       },
       "Set the value of input_report_id");
+
+  // add menu functions for getting / setting input_report_button_byte_0
+  root_menu->Insert(
+      "rp_byte0",
+      [&](std::ostream &out) {
+        out << "input_report_button_byte_0: " << (int)input_report_button_byte_0 << "\n";
+      },
+      "Get the current value of input_report_button_byte_0");
+  root_menu->Insert(
+      "rp_byte0", {"Input Report Button Byte 0 (0-255)"},
+      [&](std::ostream &out, int value) {
+        input_report_button_byte_0 = value;
+        std::error_code ec;
+        nvs.set_var("latency", "rp_byte0", input_report_button_byte_0, ec);
+        if (ec) {
+          out << "Failed to set input_report_button_byte_0: " << ec.message() << "\n";
+        } else {
+          out << "input_report_button_byte_0: " << (int)input_report_button_byte_0 << "\n";
+        }
+      },
+      "Set the value of input_report_button_byte_0");
+
+  // add menu functions for getting / setting input_report_button_byte_1
+  root_menu->Insert(
+      "rp_byte1",
+      [&](std::ostream &out) {
+        out << "input_report_button_byte_1: " << (int)input_report_button_byte_1 << "\n";
+      },
+      "Get the current value of input_report_button_byte_1");
+  root_menu->Insert(
+      "rp_byte1", {"Input Report Button Byte 1 (0-255)"},
+      [&](std::ostream &out, int value) {
+        input_report_button_byte_1 = value;
+        std::error_code ec;
+        nvs.set_var("latency", "rp_byte1", input_report_button_byte_1, ec);
+        if (ec) {
+          out << "Failed to set input_report_button_byte_1: " << ec.message() << "\n";
+        } else {
+          out << "input_report_button_byte_1: " << (int)input_report_button_byte_1 << "\n";
+        }
+      },
+      "Set the value of input_report_button_byte_1");
 
   // add menu functions for getting / setting device_name
   root_menu->Insert(

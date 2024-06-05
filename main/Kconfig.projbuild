@@ -67,18 +67,20 @@ menu "Latency Test Configuration"
 
     config BUTTON_GPIO
         int "Button GPIO"
-        default 17
+        default 17 if IDF_TARGET_ESP32S3
+        default 25 if IDF_TARGET_ESP32
         help
-            The GPIO pin number for the button. Default is GPIO_NUM_17, which is
-            A1 on QtPy ESP32S3.
+            The GPIO pin number for the button. Default maps to A1 on QtPy
+            ESP32S3 (GPIO17) and QtPy ESP32 Pico (GPIO25).
 
     config EXTRA_GND_GPIO
         int "Extra GND GPIO"
-        default 9
+        default 9 if IDF_TARGET_ESP32S3
+        default 27 if IDF_TARGET_ESP32
         help
             The GPIO pin number for the extra GND connection. Will be set to
-            always output low. Default is GPIO_NUM_9, which is A2 on QtPy
-            ESP32S3.
+            always output low. Default maps to A2 on QtPy ESP32S3 (GPIO9) and
+            QtPy ESP32 Pico (GPIO27).
 
     config SENSOR_ADC_UNIT
         int "Sensor ADC Unit"
@@ -90,9 +92,26 @@ menu "Latency Test Configuration"
 
     config SENSOR_ADC_CHANNEL
         int "Sensor ADC Channel"
-        default 7
+        default 7 if IDF_TARGET_ESP32S3
+        default 9 if IDF_TARGET_ESP32
         help
-            The ADC channel number for the sensor. Default is ADC2 Channel 7,
-            which is A0 (GPIO18) on QtPy ESP32S3.
+            The ADC channel number for the sensor. Default is A0 on QtPy ESP32S3
+            (ADC2_CH7) and QtPy ESP32 Pico (ADC2_CH9).
+
+    config EXAMPLE_SSP_ENABLED
+        bool "Secure Simple Pairing"
+        depends on BT_CLASSIC_ENABLED
+        default y
+        help
+            This enables the Secure Simple Pairing. If disable this option,
+            Bluedroid will only support Legacy Pairing
+
+    config EXAMPLE_HID_HOST_ENABLED
+        bool "Enable Example HID Host"
+        depends on BT_NIMBLE_ENABLED
+        default y
+        select BT_NIMBLE_HID_SERVICE
+        help
+            This enables Nimble HID Host
 
 endmenu

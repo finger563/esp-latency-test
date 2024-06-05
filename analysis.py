@@ -35,10 +35,14 @@ def main():
     try:
         with open(args.filename, 'r') as f:
             lines = f.readlines()
-            for i, line in enumerate(lines):
-                if line[0] == '%':
-                    break
-            data = np.loadtxt(lines[i+1:], delimiter=',', skiprows=1)
+            # find the index of the header line
+            header_index = next(i for i, line in enumerate(lines) if line.startswith('%'))
+            # skip all lines before the header line
+            lines = lines[header_index+1:]
+            # list comprehension to remove any lines that aren't valid CSV
+            # TODO: this needs to be more robust
+            lines = [line for line in lines if len(line.split(',')) == 2 and not ':' in line]
+            data = np.loadtxt(lines, delimiter=',', skiprows=1)
     except Exception as e:
         print('Error: could not load data from file.')
         print(e)
@@ -69,12 +73,14 @@ def main():
     plt.axvline(mean, color='r', linestyle='dashed', linewidth=1)
     plt.axvline(mean + std, color='g', linestyle='dashed', linewidth=1)
     plt.axvline(mean - std, color='g', linestyle='dashed', linewidth=1)
-    # add text to the plot, in the middle of the plot
-    plt.text(mean, 0, f'mean ({mean:.2f})', rotation=45, verticalalignment='bottom')
-    plt.text(mean + std, 0, f'+std ({std:.2f})', rotation=45, verticalalignment='bottom')
-    plt.text(mean - std, 0, f'-std ({std:.2f})', rotation=45, verticalalignment='bottom')
-    # add actions per minute to the plot as a nice text box in the upper left
-    plt.text(0.05, 0.95, f'APM >= {actions_per_minute:.2f}', transform=plt.gca().transAxes, verticalalignment='top', bbox=dict(facecolor='white', alpha=0.5))
+    # add mean, std-deviation, and actions per minute to the plot as a nice text
+    # box in the upper right corner
+    plt.text(0.95, 0.95,
+             'Mean: {:.2f} ms\nStd: {:.2f} ms\nActions/min: {:.2f}'.format(mean, std, actions_per_minute),
+             horizontalalignment='right',
+             verticalalignment='top',
+             transform=plt.gca().transAxes, bbox=dict(facecolor='white', alpha=0.5))
+
     if args.output:
         plt.savefig(args.output)
     else:

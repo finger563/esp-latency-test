@@ -261,7 +261,9 @@ Example screenshot of the console output from this app:
 
 Example histogram generated from the analysis tool:
 
-![image](https://github.com/finger563/esp-latency-test/assets/213467/0835a8ce-d152-40a8-823a-664772681a63)
+![image](./output/2024-06-05-xbox-elite-wireless-controller-hosted-to-esp32.png)
 
 Example screenshot of the serial plotter running on the output of the app in
 real time:
+
+![image](https://github.com/finger563/esp-latency-test/assets/213467/4b91a72a-1e9d-4c05-9759-b6e188a32d5d)

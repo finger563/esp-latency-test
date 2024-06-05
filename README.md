@@ -1,8 +1,11 @@
 # Esp-Latency-Test
 
-Code for performing end-to-end latency test for inputs. Uses gpio output to pull
-a button low, then uses a photo-transistor to measure when the screen changes
-and computes the time it took.
+Code for performing end-to-end latency test for inputs. Can be configured in two ways:
+1. ADC Measurement for end to end with a phone: actuate the button, then use a
+   photo-diode/photo-transistor to measure when the screen changes and computes
+   the time it took.
+2. Hosted measurement for end to end with the ESP: actuate the button, then
+   measure the time it takes to receive the updated input report.
 
 This repository also contains an [`analysis.py`](./analysis.py) script, which can be used to plot
 a histogram of latency values that are measured from the system.
@@ -12,16 +15,18 @@ a histogram of latency values that are measured from the system.
 1. ESP32 dev board (code defaults to esp32s3), such as QtPy ESP32S3.
 2. Dupont wires to connect to button on controller (patch into button and gnd
    signal).
+   
+For measurement method (1/ADC) above, you'll also need:
 3. Photo-diode for measuring the brightness / light of the screen. I used
    [Amazon 3mm flat head PhotoDiode](https://www.amazon.com/dp/B07VNSX74J).
 4. Resistor (1k-10k) from photodiode output to ground.
 
-You'll likely need to run the embedded code once with `CONFIG_DEBUG_PLOT_ALL`
-enabled (via menuconfig), so that you can see the ADC values for the screen
-on/off state based on the screen / app / sensor you select and how you've
-mounted them. I use duct tape to "mount" the sensor to my phone screen
-:sweat_smile:. Then you can configure the appropriate upper/lower thresholds
-accordingly to take data.
+If you're planning to run method (1/ADC) above, you'll likely need to run the
+embedded code once with `CONFIG_DEBUG_PLOT_ALL` enabled (via menuconfig), so
+that you can see the ADC values for the screen on/off state based on the screen
+/ app / sensor you select and how you've mounted them. I use duct tape to
+"mount" the sensor to my phone screen :sweat_smile:. Then you can configure the
+appropriate upper/lower thresholds accordingly to take data.
 
 ## Use
 
@@ -101,7 +106,7 @@ Alternatively, you can always ensure the submodules are up to date after cloning
 git submodule update --init --recursive
 ```
 
-## Configuring
+## Build Configuration
 
 You can configure a few parts of the project, such as the GPIO for the button,
 the ADC for the sensor, and the thresholds to be used.
@@ -121,7 +126,6 @@ You can configure:
   sensed as on / button is sensed as pressed.
 - `LOWER_THRESHOLD`: the value that the ADC must drop below before the screen is
   sensed as off / button is sensed as released.
-- `BUTTON_PRESS_LEVEL`: the logic level which the board should output on the
   `BUTTON_GPIO` to trigger a button press event.
 - `BUTTON_GPIO`: the gpio on the board which is connected to the controller
   button.
@@ -144,6 +148,16 @@ idf.py -p PORT flash monitor
 (To exit the serial monitor, type ``Ctrl-]``.)
 
 See the Getting Started Guide for full steps to configure and use ESP-IDF to build projects.
+
+## Runtime Configuration
+
+The test has a CLI which allows you to switch between method (1/ADC), and method
+(2/Hosted) measurements, and allows you to configure some parameters of the test
+such as which value represents a button press, what device to connect to, etc.
+For a full list of options, run the `help` command.
+
+The configuration is loaded from NVS flash and printed on boot (and can be
+printed from the CLI by typing `config`).
 
 ## Output
 

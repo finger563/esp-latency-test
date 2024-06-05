@@ -374,7 +374,7 @@ void hidh_callback(void *handler_args, esp_event_base_t base, int32_t id, void *
       connected = true;
       [[maybe_unused]] const uint8_t *bda = esp_hidh_dev_bda_get(param->open.dev);
 #if CONFIG_BT_CLASSIC_ENABLED
-      if (!is_ble) {
+      if (!is_ble && bt_qos_units != 0) {
         // if BT, update the connection parameters
         // max time between packets
         fmt::print("Setting QoS\n");

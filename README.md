@@ -10,6 +10,30 @@ Code for performing end-to-end latency test for inputs. Can be configured in two
 This repository also contains an [`analysis.py`](./analysis.py) script, which can be used to plot
 a histogram of latency values that are measured from the system.
 
+<!-- markdown-toc start - Don't edit this section. Run M-x markdown-toc-refresh-toc -->
+**Table of Contents**
+
+- [Esp-Latency-Test](#esp-latency-test)
+    - [Hardware Needed](#hardware-needed)
+    - [Use](#use)
+        - [Real-time Plotting](#real-time-plotting)
+        - [Analysis](#analysis)
+            - [Setup](#setup)
+            - [Running](#running)
+    - [Cloning](#cloning)
+    - [Build Configuration](#build-configuration)
+    - [Build and Flash](#build-and-flash)
+    - [Runtime Configuration](#runtime-configuration)
+        - [Pairing and configuring your controller](#pairing-and-configuring-your-controller)
+            - [Xbox Wireless Controller (1708)](#xbox-wireless-controller-1708)
+            - [Xbox Elite Wireless Controller 2 (1797)](#xbox-elite-wireless-controller-2-1797)
+            - [Playstation Dualsense (model CFI-SCT1W)](#playstation-dualsense-model-cfi-sct1w)
+            - [Nintendo Switch Pro Controller](#nintendo-switch-pro-controller)
+    - [Output](#output)
+
+<!-- markdown-toc end -->
+
+
 ## Hardware Needed
 
 1. ESP32 dev board (code defaults to esp32s3), such as QtPy ESP32S3.
@@ -27,6 +51,12 @@ that you can see the ADC values for the screen on/off state based on the screen
 / app / sensor you select and how you've mounted them. I use duct tape to
 "mount" the sensor to my phone screen :sweat_smile:. Then you can configure the
 appropriate upper/lower thresholds accordingly to take data.
+
+Some controllers, such as 
+* `Xbox Elite Wireless Controller 2 (model 1797)`
+* `Xbox Wireless Controller (model 1708)`
+* `Playstation Dualsense (model CFI-SCT1W)`
+* `Nintendo Switch Pro Controller`
 
 ## Use
 
@@ -159,6 +189,56 @@ For a full list of options, run the `help` command.
 The configuration is loaded from NVS flash and printed on boot (and can be
 printed from the CLI by typing `config`).
 
+### Pairing and configuring your controller
+
+When booting, the tester device waits for input for 3 seconds. It will print a
+message and during this period if you press any key on the keyboard via the
+serial terminal, it will go into the command line interface (CLI).
+
+In this CLI, you can edit the runtime configuration mentioned above. Below, I've
+written down some valid configurations for various controllers.
+
+You'll want to put the controller into pairing mode and run the `scan` command.
+Afterwards (assuming the device under test (DUT) shows up in the scan result
+list), you'll want to set the `device_name` and other settings accordingly. Some
+examples are given below. You can then `connect` then / or `exit`.
+
+#### Xbox Wireless Controller (1708)
+
+* `device_name`: Should show up as `Xbox Wireless Controller`. You can simply
+  set to `Xbox`
+* `parse_input`: Should be set to `false`
+
+#### Xbox Elite Wireless Controller 2 (1797)
+
+* `device_name`: Should show up as `Xbox Elite Wireless Controller`. You can simply
+  set to `Xbox`
+* `parse_input`: Should be set to `false`
+
+#### Playstation Dualsense (model CFI-SCT1W)
+
+* `device_name`: Should show up as `Wireless Controller`. You can simply set to
+  `Wireless` if you want, or you can set it to `"Wireless Controller"` - NOTE:
+  the quotation marks are required.
+* `parse_input`: Should be set to `true`
+* `input_report_id`: should be set to `1`
+* `rp_byte0`: should be set to `4` - this is the first byte index of the input
+  report which corresponds to button data.
+* `rp_byte1`: should be set to `5` - this is the second byte index of the input
+  report which corresponds to button data.
+
+#### Nintendo Switch Pro Controller
+
+* `device_name`: Should show up as `Pro Controller`. You can simply set to `Pro`
+  if you want, or you can set it to `"pro Controller"` - NOTE: the quotation
+  marks are required.
+* `parse_input`: Should be set to `true`
+* `input_report_id`: should be set to `63`
+* `rp_byte0`: should be set to `0` - this is the first byte index of the input
+  report which corresponds to button data.
+* `rp_byte1`: should be set to `1` - this is the second byte index of the input
+  report which corresponds to button data.
+
 ## Output
 
 Example screenshot of the console output from this app:
@@ -169,3 +249,5 @@ Example histogram generated from the analysis tool:
 
 ![image](https://github.com/finger563/esp-latency-test/assets/213467/0835a8ce-d152-40a8-823a-664772681a63)
 
+Example screenshot of the serial plotter running on the output of the app in
+real time:

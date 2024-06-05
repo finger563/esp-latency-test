@@ -378,9 +378,10 @@ void hidh_callback(void *handler_args, esp_event_base_t base, int32_t id, void *
   switch (event) {
   case ESP_HIDH_OPEN_EVENT:
     if (param->open.status == ESP_OK) {
-      fmt::print("Connected to device\n");
+      const uint8_t *bda = esp_hidh_dev_bda_get(param->open.dev);
+      fmt::print("Connected to device, addr: {:02x}:{:02x}:{:02x}:{:02x}:{:02x}:{:02x}\n",
+                 ESP_BD_ADDR_HEX(bda));
       connected = true;
-      [[maybe_unused]] const uint8_t *bda = esp_hidh_dev_bda_get(param->open.dev);
 #if CONFIG_BT_CLASSIC_ENABLED
       if (!is_ble && bt_qos_units != 0) {
         // if BT, update the connection parameters
@@ -504,8 +505,8 @@ bool connect(const std::string &remote_name, const std::string &remote_address) 
               ESP_BD_ADDR_HEX(result->bda));
 #if CONFIG_BT_CLASSIC_ENABLED && CONFIG_BT_BLE_ENABLED
   if (result->transport == ESP_HID_TRANSPORT_BLE) {
-    is_ble = true;
 #endif // CONFIG_BT_CLASSIC_ENABLED
+    is_ble = true;
     logger.info("          using BLE, addr_type: {}", (int)result->ble.addr_type);
 
     // if BLE, update the connection parameters
@@ -532,6 +533,9 @@ bool scan_and_connect(int num_seconds) {
     logger.error("No devices found");
     return false;
   }
+  if (connected) {
+    return true;
+  }
   return connect(device_name, device_address);
 }
 
@@ -544,7 +548,7 @@ void init_hid() {
 
   esp_hidh_config_t config = {
       .callback = hidh_callback,
-      .event_stack_size = 4096,
+      .event_stack_size = 6192,
       .callback_arg = NULL,
   };
   ESP_ERROR_CHECK(esp_hidh_init(&config));

@@ -25,8 +25,8 @@ static espp::Logger logger({.tag = "esp-latency-test", .level = espp::Logger::Ve
 // variables loaded from menuconfig
 static constexpr gpio_num_t button_pin = (gpio_num_t)CONFIG_BUTTON_GPIO;
 static constexpr gpio_num_t extra_gnd_pin = (gpio_num_t)CONFIG_EXTRA_GND_GPIO;
-static constexpr int BUTTON_PRESSED_LEVEL = CONFIG_BUTTON_PRESS_LEVEL;
-static constexpr int BUTTON_RELEASED_LEVEL = !BUTTON_PRESSED_LEVEL;
+static int BUTTON_PRESSED_LEVEL = 1;
+static int BUTTON_RELEASED_LEVEL = !BUTTON_PRESSED_LEVEL;
 static constexpr int UPPER_THRESHOLD = CONFIG_UPPER_THRESHOLD;
 static constexpr int LOWER_THRESHOLD = CONFIG_LOWER_THRESHOLD;
 static constexpr adc_unit_t ADC_UNIT = CONFIG_SENSOR_ADC_UNIT == 1 ? ADC_UNIT_1 : ADC_UNIT_2;
@@ -34,6 +34,7 @@ static constexpr adc_channel_t ADC_CHANNEL = (adc_channel_t)CONFIG_SENSOR_ADC_CH
 static std::vector<espp::AdcConfig> channels{
     // A0 on QtPy ESP32S3
     {.unit = ADC_UNIT, .channel = ADC_CHANNEL, .attenuation = ADC_ATTEN_DB_12}};
+static std::shared_ptr<espp::OneshotAdc> adc{nullptr};
 
 // things we'll load from NVS
 static bool use_hid_host{false};
@@ -54,6 +55,7 @@ static std::unordered_map<std::string, esp_hid_scan_result_t *> devices;
 static esp_hid_scan_result_t *results = NULL;
 
 // utility functions
+float get_mv();
 void init_hid();
 void load_nvs(espp::Nvs &nvs);
 void build_menu(std::unique_ptr<cli::Menu> &root_menu, espp::Nvs &nvs);
@@ -75,6 +77,8 @@ extern "C" void app_main(void) {
     return now / 1e6f;
   };
 
+  logger.info("Bootup");
+
   std::error_code ec;
   espp::Nvs nvs;
   nvs.init(ec);
@@ -88,6 +92,22 @@ extern "C" void app_main(void) {
 
   // load previous settings (if any) from NVS
   load_nvs(nvs);
+
+  // make the ADC regardless of whether we're using it or not, esp. because
+  // DEBUG_PLOT_ALL uses it
+  adc = std::make_shared<espp::OneshotAdc>(espp::OneshotAdc::Config{
+      .unit = ADC_UNIT,
+      .channels = channels,
+  });
+
+  logger.info("Setting up GPIO pins");
+  logger.info("Button pin: {}, extra GND pin: {}", (int)button_pin, (int)extra_gnd_pin);
+  logger.info("Button pressed level: {}, released level: {}", BUTTON_PRESSED_LEVEL,
+              BUTTON_RELEASED_LEVEL);
+  gpio_set_direction(button_pin, GPIO_MODE_OUTPUT);
+  gpio_set_level(button_pin, BUTTON_RELEASED_LEVEL);
+  gpio_set_direction(extra_gnd_pin, GPIO_MODE_OUTPUT);
+  gpio_set_level(extra_gnd_pin, 0);
 
   auto root_menu = std::make_unique<cli::Menu>("latency", "Latency Measurement Menu");
   // make some items for configuring the latency test:
@@ -140,24 +160,6 @@ extern "C" void app_main(void) {
     logger.info("Configured to use PhotoDiode (ADC)");
   }
 
-  // make the ADC regardless of whether we're using it or not, esp. because
-  // DEBUG_PLOT_ALL uses it
-  espp::OneshotAdc adc({
-      .unit = ADC_UNIT,
-      .channels = channels,
-  });
-
-  logger.info("Setting up GPIO pins");
-  logger.info("Button pin: {}, extra GND pin: {}", (int)button_pin, (int)extra_gnd_pin);
-  logger.info("Button pressed level: {}, released level: {}", BUTTON_PRESSED_LEVEL,
-              BUTTON_RELEASED_LEVEL);
-  gpio_set_direction(button_pin, GPIO_MODE_OUTPUT);
-  gpio_set_level(button_pin, BUTTON_RELEASED_LEVEL);
-  gpio_set_direction(extra_gnd_pin, GPIO_MODE_OUTPUT);
-  gpio_set_level(extra_gnd_pin, 0);
-
-  logger.info("Bootup");
-
   static uint64_t button_press_start = 0;
   static uint64_t button_release_start = 0;
   static uint64_t latency_us = 0;
@@ -167,21 +169,6 @@ extern "C" void app_main(void) {
 
   // randomly shift the button press time within the 1s period
   static int shift = 0;
-
-#if CONFIG_FILTER_ADC
-  // filter the ADC readings
-  static constexpr float ALPHA = CONFIG_FILTER_ALPHA / 1e3f;
-  espp::SimpleLowpassFilter filter({.time_constant = ALPHA});
-#endif // CONFIG_FILTER_ADC
-
-  auto get_mv = [&]() {
-    auto voltages = adc.read_all_mv();
-#if CONFIG_FILTER_ADC
-    return filter(voltages[0]);
-#else  // CONFIG_FILTER_ADC
-    return voltages[0];
-#endif // CONFIG_FILTER_ADC
-  };
 
 #if CONFIG_DEBUG_PLOT_ALL
   if (use_hid_host) { // cppcheck-suppresss knownConditionTrueFalse
@@ -338,6 +325,18 @@ extern "C" void app_main(void) {
   }
 
 #endif // CONFIG_DEBUG_PLOT_ALL
+}
+
+float get_mv() {
+  auto voltages = adc->read_all_mv();
+#if CONFIG_FILTER_ADC
+  // filter the ADC readings
+  static constexpr float ALPHA = CONFIG_FILTER_ALPHA / 1e3f;
+  static espp::SimpleLowpassFilter filter({.time_constant = ALPHA});
+  return filter(voltages[0]);
+#else  // CONFIG_FILTER_ADC
+  return voltages[0];
+#endif // CONFIG_FILTER_ADC
 }
 
 void hidh_callback(void *handler_args, esp_event_base_t base, int32_t id, void *event_data) {
@@ -542,6 +541,15 @@ void load_nvs(espp::Nvs &nvs) {
   }
   logger.info("Loaded use_hid_host: {}", use_hid_host);
 
+  // button press level
+  nvs.get_or_set_var("latency", "pressed_level", BUTTON_PRESSED_LEVEL, BUTTON_PRESSED_LEVEL, ec);
+  if (ec) {
+    logger.error("Failed to get pressed_level from NVS: {}", ec.message());
+    return;
+  }
+  // set RELEASED level based on PRESSED level
+  BUTTON_RELEASED_LEVEL = !BUTTON_PRESSED_LEVEL;
+
   if (use_hid_host) {
     // get the name
     nvs.get_var("latency", "device_name", device_name, ec);
@@ -602,6 +610,40 @@ void load_nvs(espp::Nvs &nvs) {
 }
 
 void build_menu(std::unique_ptr<cli::Menu> &root_menu, espp::Nvs &nvs) {
+  // menu function for reading the current adc value
+  root_menu->Insert(
+      "adc", [&](std::ostream &out) { out << fmt::format("ADC value: {:.2f} mV\n", get_mv()); },
+      "Read the current ADC value");
+
+  // menu function for setting the button output value
+  root_menu->Insert(
+      "button", {"Button Value (0/1)"},
+      [&](std::ostream &out, int value) {
+        gpio_set_level(button_pin, value);
+        out << "Button set to " << value << "\n";
+      },
+      "Set the button output value");
+
+  // menu functions for getting / setting the button pressed level
+  root_menu->Insert(
+      "pressed_level",
+      [&](std::ostream &out) { out << "pressed_level: " << BUTTON_PRESSED_LEVEL << "\n"; },
+      "Get the current value of pressed_level");
+  root_menu->Insert(
+      "pressed_level", {"Button Pressed Level (0/1)"},
+      [&](std::ostream &out, int value) {
+        BUTTON_PRESSED_LEVEL = value;
+        BUTTON_RELEASED_LEVEL = !BUTTON_PRESSED_LEVEL;
+        std::error_code ec;
+        nvs.set_var("latency", "pressed_level", BUTTON_PRESSED_LEVEL, ec);
+        if (ec) {
+          out << "Failed to set pressed_level: " << ec.message() << "\n";
+        } else {
+          out << "pressed_level: " << BUTTON_PRESSED_LEVEL << "\n";
+        }
+      },
+      "Set the value of pressed_level");
+
   // menu functions for getting / setting use_hid_host
   root_menu->Insert(
       "use_hid_host", [&](std::ostream &out) { out << "use_hid_host: " << use_hid_host << "\n"; },

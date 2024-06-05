@@ -205,17 +205,29 @@ examples are given below. You can then `connect` then / or `exit`.
 
 #### Xbox Wireless Controller (1708)
 
+To pair this controller, press and hold the xbox button to turn on the
+controller, then press and hold the sync button until the xbox light starts
+flashing quickly.
+
 * `device_name`: Should show up as `Xbox Wireless Controller`. You can simply
   set to `Xbox`
 * `parse_input`: Should be set to `false`
 
 #### Xbox Elite Wireless Controller 2 (1797)
 
+To pair this controller, press and hold the xbox button to turn on the
+controller, then press and hold the sync button until the xbox light starts
+flashing quickly.
+
 * `device_name`: Should show up as `Xbox Elite Wireless Controller`. You can simply
   set to `Xbox`
 * `parse_input`: Should be set to `false`
 
 #### Playstation Dualsense (model CFI-SCT1W)
+
+To pair this controller, press and hold the share button (left) and then press
+and release the playstation button. You'll know it's in pairing mode if the led
+is flashing very quickly.
 
 * `device_name`: Should show up as `Wireless Controller`. You can simply set to
   `Wireless` if you want, or you can set it to `"Wireless Controller"` - NOTE:
@@ -228,6 +240,8 @@ examples are given below. You can then `connect` then / or `exit`.
   report which corresponds to button data.
 
 #### Nintendo Switch Pro Controller
+
+To pair this controller, simply press and hold the sync button while it is off.
 
 * `device_name`: Should show up as `Pro Controller`. You can simply set to `Pro`
   if you want, or you can set it to `"pro Controller"` - NOTE: the quotation

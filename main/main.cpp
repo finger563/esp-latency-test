@@ -19,6 +19,9 @@ using namespace std::chrono_literals;
 
 #include "esp_hid_gap.h"
 
+// logger for the latency test
+static espp::Logger logger({.tag = "esp-latency-test", .level = espp::Logger::Verbosity::DEBUG});
+
 // variables loaded from menuconfig
 static constexpr gpio_num_t button_pin = (gpio_num_t)CONFIG_BUTTON_GPIO;
 static constexpr gpio_num_t extra_gnd_pin = (gpio_num_t)CONFIG_EXTRA_GND_GPIO;
@@ -28,8 +31,9 @@ static constexpr int UPPER_THRESHOLD = CONFIG_UPPER_THRESHOLD;
 static constexpr int LOWER_THRESHOLD = CONFIG_LOWER_THRESHOLD;
 static constexpr adc_unit_t ADC_UNIT = CONFIG_SENSOR_ADC_UNIT == 1 ? ADC_UNIT_1 : ADC_UNIT_2;
 static constexpr adc_channel_t ADC_CHANNEL = (adc_channel_t)CONFIG_SENSOR_ADC_CHANNEL;
-
-static espp::Logger logger({.tag = "esp-latency-test", .level = espp::Logger::Verbosity::DEBUG});
+static std::vector<espp::AdcConfig> channels{
+    // A0 on QtPy ESP32S3
+    {.unit = ADC_UNIT, .channel = ADC_CHANNEL, .attenuation = ADC_ATTEN_DB_12}};
 
 // things we'll load from NVS
 static bool use_hid_host{false};
@@ -132,15 +136,12 @@ extern "C" void app_main(void) {
       logger.warn("Failed to connect to device '{}', retrying...", device_name);
     }
     logger.info("Connected!");
-  }
-
-  if (!use_hid_host) { // cppcheck-suppress knownConditionTrueFalse
+  } else {
     logger.info("Configured to use PhotoDiode (ADC)");
   }
 
-  std::vector<espp::AdcConfig> channels{
-      // A0 on QtPy ESP32S3
-      {.unit = ADC_UNIT, .channel = ADC_CHANNEL, .attenuation = ADC_ATTEN_DB_12}};
+  // make the ADC regardless of whether we're using it or not, esp. because
+  // DEBUG_PLOT_ALL uses it
   espp::OneshotAdc adc({
       .unit = ADC_UNIT,
       .channels = channels,

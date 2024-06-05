@@ -239,6 +239,9 @@ is flashing very quickly.
 * `rp_byte1`: should be set to `5` - this is the second byte index of the input
   report which corresponds to button data.
 
+Info on its HID reports can be found
+[here](https://github.com/nondebug/dualsense).
+
 #### Nintendo Switch Pro Controller
 
 To pair this controller, simply press and hold the sync button while it is off.
@@ -253,11 +256,14 @@ To pair this controller, simply press and hold the sync button while it is off.
 * `rp_byte1`: should be set to `1` - this is the second byte index of the input
   report which corresponds to button data.
 
+Info on its HID reports can be found
+[here](https://github.com/dekuNukem/Nintendo_Switch_Reverse_Engineering/blob/master/bluetooth_hid_notes.md)
+
 ## Output
 
 Example screenshot of the console output from this app:
 
-![CleanShot 2024-05-30 at 16 16 43](https://github.com/finger563/esp-latency-test/assets/213467/e69c99bf-af8e-42cb-8903-8c4b001d8759)
+![CleanShot 2024-06-05 at 16 45 56](https://github.com/finger563/esp-latency-test/assets/213467/214e613d-21b6-41df-8707-a638efbd1b35)
 
 Example histogram generated from the analysis tool:
 

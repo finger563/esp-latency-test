@@ -55,6 +55,7 @@ static std::unordered_map<std::string, esp_hid_scan_result_t *> devices;
 static esp_hid_scan_result_t *results = NULL;
 
 // utility functions
+std::string config_to_string();
 float get_mv();
 void init_hid();
 void load_nvs(espp::Nvs &nvs);
@@ -93,6 +94,9 @@ extern "C" void app_main(void) {
   // load previous settings (if any) from NVS
   load_nvs(nvs);
 
+  // print the configuration
+  logger.info("\n{}", config_to_string());
+
   // make the ADC regardless of whether we're using it or not, esp. because
   // DEBUG_PLOT_ALL uses it
   adc = std::make_shared<espp::OneshotAdc>(espp::OneshotAdc::Config{
@@ -101,9 +105,6 @@ extern "C" void app_main(void) {
   });
 
   logger.info("Setting up GPIO pins");
-  logger.info("Button pin: {}, extra GND pin: {}", (int)button_pin, (int)extra_gnd_pin);
-  logger.info("Button pressed level: {}, released level: {}", BUTTON_PRESSED_LEVEL,
-              BUTTON_RELEASED_LEVEL);
   gpio_set_direction(button_pin, GPIO_MODE_OUTPUT);
   gpio_set_level(button_pin, BUTTON_RELEASED_LEVEL);
   gpio_set_direction(extra_gnd_pin, GPIO_MODE_OUTPUT);
@@ -325,6 +326,30 @@ extern "C" void app_main(void) {
   }
 
 #endif // CONFIG_DEBUG_PLOT_ALL
+}
+
+std::string config_to_string() {
+  std::string config = "Current configuration:\n"
+                       "----------------------\n";
+  config += fmt::format("Button pin: {}, extra GND pin: {}\n", (int)button_pin, (int)extra_gnd_pin);
+  config += fmt::format("Button pressed level: {}, released level: {}\n", BUTTON_PRESSED_LEVEL,
+                        BUTTON_RELEASED_LEVEL);
+  config += fmt::format("ADC unit: {}, channel: {}\n", ADC_UNIT, ADC_CHANNEL);
+  config +=
+      fmt::format("Upper threshold: {}, lower threshold: {}\n", UPPER_THRESHOLD, LOWER_THRESHOLD);
+  config += fmt::format("Use HID Host: {}\n", use_hid_host);
+  if (use_hid_host) {
+    config += fmt::format("Device name: '{}'\n", device_name);
+    config += fmt::format("Device address: '{}'\n", device_address);
+    config += fmt::format("Parse input: {}\n", parse_input);
+    config += fmt::format("Input report ID: {}\n", (int)input_report_id);
+    config += fmt::format("BLE min interval: {} = {} ms\n", ble_min_interval_units,
+                          ble_interval_units_to_ms(ble_min_interval_units));
+    config += fmt::format("BLE max interval: {} = {} ms\n", ble_max_interval_units,
+                          ble_interval_units_to_ms(ble_max_interval_units));
+    config += fmt::format("BT QoS: {} = {} ms\n", bt_qos_units, bt_qos_units_to_ms(bt_qos_units));
+  }
+  return config;
 }
 
 float get_mv() {
@@ -610,6 +635,11 @@ void load_nvs(espp::Nvs &nvs) {
 }
 
 void build_menu(std::unique_ptr<cli::Menu> &root_menu, espp::Nvs &nvs) {
+  // menu function for printing current configuration
+  root_menu->Insert(
+      "config", [&](std::ostream &out) { out << config_to_string(); },
+      "Print the current configuration");
+
   // menu function for reading the current adc value
   root_menu->Insert(
       "adc", [&](std::ostream &out) { out << fmt::format("ADC value: {:.2f} mV\n", get_mv()); },

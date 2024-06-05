@@ -341,15 +341,19 @@ std::string config_to_string() {
       fmt::format("Upper threshold: {}, lower threshold: {}\n", UPPER_THRESHOLD, LOWER_THRESHOLD);
   config += fmt::format("Use HID Host: {}\n", use_hid_host);
   if (use_hid_host) {
-    config += fmt::format("Device name: '{}'\n", device_name);
-    config += fmt::format("Device address: '{}'\n", device_address);
-    config += fmt::format("Parse input: {}\n", parse_input);
-    config += fmt::format("Input report ID: {}\n", (int)input_report_id);
-    config += fmt::format("BLE min interval: {} = {} ms\n", ble_min_interval_units,
+    config += fmt::format("\tDevice name: '{}'\n", device_name);
+    config += fmt::format("\tDevice address: '{}'\n", device_address);
+    config += fmt::format("\tParse input: {}\n", parse_input);
+    if (parse_input) {
+      config += fmt::format("\t\tInput report ID: {}\n", (int)input_report_id);
+      config += fmt::format("\t\tInput report button bytes: {}, {}\n",
+                            (int)input_report_button_byte_0, (int)input_report_button_byte_1);
+    }
+    config += fmt::format("\tBLE min interval: {} = {} ms\n", ble_min_interval_units,
                           ble_interval_units_to_ms(ble_min_interval_units));
-    config += fmt::format("BLE max interval: {} = {} ms\n", ble_max_interval_units,
+    config += fmt::format("\tBLE max interval: {} = {} ms\n", ble_max_interval_units,
                           ble_interval_units_to_ms(ble_max_interval_units));
-    config += fmt::format("BT QoS: {} = {} ms\n", bt_qos_units, bt_qos_units_to_ms(bt_qos_units));
+    config += fmt::format("\tBT QoS: {} = {} ms\n", bt_qos_units, bt_qos_units_to_ms(bt_qos_units));
   }
   return config;
 }

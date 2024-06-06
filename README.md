@@ -203,6 +203,21 @@ Afterwards (assuming the device under test (DUT) shows up in the scan result
 list), you'll want to set the `device_name` and other settings accordingly. Some
 examples are given below. You can then `connect` then / or `exit`.
 
+#### Xbox Wireless Controller (1914)
+
+To pair this controller, press and hold the xbox button to turn on the
+controller, then press and hold the sync button until the xbox light starts
+flashing quickly.
+
+* `device_name`: Should show up as `Xbox Wireless Controller`. You can simply
+  set to `Xbox`
+* `parse_input`: Should be set to `true`
+* `input_report_id`: should be set to `1`
+* `rp_byte0`: should be set to `13` - this is the first byte index of the input
+  report which corresponds to button data.
+* `rp_byte1`: should be set to `14` - this is the second byte index of the input
+  report which corresponds to button data.
+
 #### Xbox Wireless Controller (1708)
 
 To pair this controller, press and hold the xbox button to turn on the

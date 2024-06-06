@@ -47,7 +47,7 @@ static uint8_t input_report_button_byte_0{
 static uint8_t input_report_button_byte_1{
     1}; // 1 for pro controller, 5 for ps5, unneeded for most controllers
 static uint8_t ble_min_interval_units{12}; // 15ms
-static uint8_t ble_max_interval_units{24}; // 30ms
+static uint8_t ble_max_interval_units{12}; // 15ms
 static uint8_t bt_qos_units{0};            // disabled by default
 
 // runtime state for HID mode
@@ -397,8 +397,8 @@ void hidh_callback(void *handler_args, esp_event_base_t base, int32_t id, void *
             .bda = {0},
             .min_int = ble_min_interval_units, // * 1.25ms
             .max_int = ble_max_interval_units, // * 1.25ms
-            .latency = 0,
-            .timeout = 400,
+            .latency = 4,                      // 4 packets allowed to be skipped
+            .timeout = 100,                    // 1000ms timeout
         };
         memcpy(conn_params.bda, bda, ESP_BD_ADDR_LEN);
         fmt::print("Setting BLE connection parameters\n");

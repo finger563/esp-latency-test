@@ -25,6 +25,7 @@ a histogram of latency values that are measured from the system.
     - [Build and Flash](#build-and-flash)
     - [Runtime Configuration](#runtime-configuration)
         - [Pairing and configuring your controller](#pairing-and-configuring-your-controller)
+            - [Xbox Wireless Controller (1914)](#xbox-wireless-controller-1914)
             - [Xbox Wireless Controller (1708)](#xbox-wireless-controller-1708)
             - [Xbox Elite Wireless Controller 2 (1797)](#xbox-elite-wireless-controller-2-1797)
             - [Playstation Dualsense (model CFI-SCT1W)](#playstation-dualsense-model-cfi-sct1w)

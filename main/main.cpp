@@ -932,7 +932,7 @@ esp_hid_scan_result_t *get_device_by_name(const std::string &name) {
     }
     // see if the provided name is a substring of the device name
     auto this_name = std::string(r->name);
-    if (this_name.find(name) != std::string::npos) {
+    if (this_name.contains(name) || name.contains(this_name) || this_name == name) {
       logger.info("Matched name '{}' to '{}'", name, this_name);
       return r;
     }

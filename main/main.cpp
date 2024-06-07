@@ -2,7 +2,6 @@
 #include <condition_variable>
 #include <string>
 #include <thread>
-#include <unordered_map>
 
 #include <driver/gpio.h>
 #include <esp_hidh.h>
@@ -55,8 +54,8 @@ static bool is_ble{false};
 static std::atomic<bool> connected{false};
 static std::mutex mutex;
 static std::condition_variable cv;
-static std::unordered_map<std::string, esp_hid_scan_result_t *> devices;
-static esp_hid_scan_result_t *results = NULL;
+static size_t devices_len = 0;
+static esp_hid_scan_result_t *devices = NULL;
 
 // utility functions
 std::string config_to_string();
@@ -71,10 +70,11 @@ uint8_t ble_interval_units_to_ms(uint8_t interval_units) { return interval_units
 uint8_t bt_qos_ms_to_units(uint16_t qos_ms) { return qos_ms / 0.625f; }
 uint16_t bt_qos_units_to_ms(uint8_t qos_units) { return qos_units * 0.625f; }
 void scan(int seconds = 5);
-void scan_and_print(std::ostream &out, int seconds = 5);
 bool connect(const std::string &remote_name, const std::string &remote_address = "");
 bool scan_and_connect(int num_seconds = 5);
 void hidh_callback(void *handler_args, esp_event_base_t base, int32_t id, void *event_data);
+esp_hid_scan_result_t *get_device_by_name(const std::string &name);
+esp_hid_scan_result_t *get_device_by_address(const std::string &address);
 
 extern "C" void app_main(void) {
   static auto elapsed = [&]() {
@@ -447,89 +447,64 @@ void hidh_callback(void *handler_args, esp_event_base_t base, int32_t id, void *
 
 void scan(int seconds) {
   logger.info("Scanning for devices for {} seconds", seconds);
-  size_t results_len = 0;
-  if (results) {
-    esp_hid_scan_results_free(results);
-    results = NULL;
-    devices.clear();
+  if (devices) {
+    esp_hid_scan_results_free(devices);
+    devices = nullptr;
+    devices_len = 0;
   }
-  esp_hid_scan(seconds, &results_len, &results);
-  // loop through the results and print them
-  if (results_len > 0) {
-    esp_hid_scan_result_t *r = results;
+  esp_hid_scan(seconds, &devices_len, &devices);
+  // loop through the devices and print them
+  if (devices_len > 0) {
+    esp_hid_scan_result_t *r = devices;
     while (r) {
       bool has_name = r->name != nullptr;
-      bool is_gamepad = r->usage == ESP_HID_USAGE_GAMEPAD;
       std::string address =
           fmt::format("{:02x}:{:02x}:{:02x}:{:02x}:{:02x}:{:02x}", ESP_BD_ADDR_HEX(r->bda));
-      std::string name = has_name ? std::string(r->name) : address;
-      logger.info("Found device: {} ({}), addr: {}", name, is_gamepad ? "Gamepad" : "Unknown",
-                  address);
-      // use either the name (if it exists) or the address as the key
-      logger.info("Found device '{}'", name);
-      devices[name] = r;
+      std::string name = has_name ? std::string(r->name) : "Unknown";
+      logger.info("Found device: '{}', addr: {}", name, address);
       r = r->next;
     }
-  }
-}
-
-void scan_and_print(std::ostream &out, int seconds) {
-  scan(seconds);
-  if (devices.empty()) {
-    out << "No devices found\n";
-    return;
-  }
-  out << "Devices found:\n";
-  for (const auto &[name, result] : devices) {
-    out << "  '" << name << "'\n";
+  } else {
+    logger.info("No devices found");
   }
 }
 
 bool connect(const std::string &remote_name, const std::string &remote_address) {
-  esp_hid_scan_result_t *result = nullptr;
-  auto it = std::find_if(devices.begin(), devices.end(), [&](const auto &pair) {
-    const auto &name = pair.first;
-    // check both remote name and remote address since the name may not show up
-    return remote_name.contains(name) || name.contains(remote_name) ||
-           remote_address.contains(name) || name.contains(remote_address);
-  });
-  if (it != devices.end()) {
-    result = it->second;
-    logger.info("Found device '{}'", result->name ? result->name : "Unknown");
-  } else {
+  auto device_by_name = get_device_by_name(remote_name);
+  auto device_by_address = get_device_by_address(remote_address);
+  if (device_by_name == nullptr && device_by_address == nullptr) {
     logger.error("Device '{}' not found", remote_name);
     return false;
   }
+  esp_hid_scan_result_t *device = device_by_name ? device_by_name : device_by_address;
   logger.info("Connecting to device '{}'", remote_name);
   logger.info("          at address {:02x}:{:02x}:{:02x}:{:02x}:{:02x}:{:02x}",
-              ESP_BD_ADDR_HEX(result->bda));
+              ESP_BD_ADDR_HEX(device->bda));
 #if CONFIG_BT_CLASSIC_ENABLED && CONFIG_BT_BLE_ENABLED
-  if (result->transport == ESP_HID_TRANSPORT_BLE) {
+  if (device->transport == ESP_HID_TRANSPORT_BLE) {
 #endif // CONFIG_BT_CLASSIC_ENABLED
     is_ble = true;
-    logger.info("          using BLE, addr_type: {}", (int)result->ble.addr_type);
+    logger.info("          using BLE, addr_type: {}", (int)device->ble.addr_type);
 
     // if BLE, update the connection parameters
-    esp_ble_gap_set_prefer_conn_params(result->bda, ble_min_interval_units, ble_max_interval_units,
+    esp_ble_gap_set_prefer_conn_params(device->bda, ble_min_interval_units, ble_max_interval_units,
                                        0, 400);
 
     // now connect
-    esp_hidh_dev_open(result->bda, ESP_HID_TRANSPORT_BLE, result->ble.addr_type);
+    esp_hidh_dev_open(device->bda, ESP_HID_TRANSPORT_BLE, device->ble.addr_type);
 #if CONFIG_BT_CLASSIC_ENABLED && CONFIG_BT_BLE_ENABLED
   } else {
     is_ble = false;
     logger.info("          using BT");
-    esp_hidh_dev_open(result->bda, ESP_HID_TRANSPORT_BT, 0);
+    esp_hidh_dev_open(device->bda, ESP_HID_TRANSPORT_BT, 0);
   }
 #endif // CONFIG_BT_CLASSIC_ENABLED
-  // now free the results
-  esp_hid_scan_results_free(results);
   return true;
 }
 
 bool scan_and_connect(int num_seconds) {
   scan(num_seconds);
-  if (devices.empty()) {
+  if (devices_len == 0) {
     logger.error("No devices found");
     return false;
   }
@@ -813,15 +788,34 @@ void build_menu(std::unique_ptr<cli::Menu> &root_menu, espp::Nvs &nvs) {
         } else {
           out << "device_name: " << device_name << "\n";
         }
-        if (devices.contains(device_name)) {
-          auto result = devices[device_name];
+        auto device = get_device_by_name(device_name);
+        if (device != nullptr) {
           device_address = fmt::format("{:02x}:{:02x}:{:02x}:{:02x}:{:02x}:{:02x}",
-                                       ESP_BD_ADDR_HEX(result->bda));
+                                       ESP_BD_ADDR_HEX(device->bda));
           out << "device_address: " << device_address << "\n";
           nvs.set_var("latency", "device_address", (const std::string)device_address, ec);
         }
       },
       "Set the value of device_name");
+
+  // add menu functions for getting / setting device_address
+  root_menu->Insert(
+      "device_address",
+      [&](std::ostream &out) { out << "device_address: " << device_address << "\n"; },
+      "Get the current value of device_address");
+  root_menu->Insert(
+      "device_address", {"Device Address"},
+      [&](std::ostream &out, const std::string &value) {
+        device_address = value;
+        std::error_code ec;
+        nvs.set_var("latency", "device_address", (const std::string)device_address, ec);
+        if (ec) {
+          out << "Failed to set device_address: " << ec.message() << "\n";
+        } else {
+          out << "device_address: " << device_address << "\n";
+        }
+      },
+      "Set the value of device_address");
 
   // add menu functions for getting / setting ble connection parameters
   root_menu->Insert(
@@ -892,13 +886,13 @@ void build_menu(std::unique_ptr<cli::Menu> &root_menu, espp::Nvs &nvs) {
       "Set the value of bt_qos");
 
   root_menu->Insert(
-      "scan", [&](std::ostream &out) { scan_and_print(out); }, "Scan for HID devices (5 seconds)");
+      "scan", [&](std::ostream &out) { scan(); }, "Scan for HID devices (5 seconds)");
 
   root_menu->Insert(
       "connect",
       [&](std::ostream &out) {
         if (connect(device_name, device_address)) {
-          out << "Connected to device '" << device_name << "'\n";
+          out << "Connecting to device '" << device_name << "'\n";
         } else {
           out << "Failed to connect to device\n";
         }
@@ -908,7 +902,7 @@ void build_menu(std::unique_ptr<cli::Menu> &root_menu, espp::Nvs &nvs) {
       "connect", {"device_name"},
       [&](std::ostream &out, const std::string &name) {
         if (connect(name)) {
-          out << "Connected to device '" << name << "'\n";
+          out << "Connecting to device '" << name << "'\n";
         } else {
           out << "Failed to connect to device\n";
         }
@@ -916,6 +910,48 @@ void build_menu(std::unique_ptr<cli::Menu> &root_menu, espp::Nvs &nvs) {
       "Connect to the device with the given name");
 
   root_menu->Insert(
-      "scan", {"seconds"}, [&](std::ostream &out, int seconds) { scan_and_print(out, seconds); },
+      "scan", {"seconds"}, [&](std::ostream &out, int seconds) { scan(seconds); },
       "Scan for HID devices");
+}
+
+esp_hid_scan_result_t *get_device_by_name(const std::string &name) {
+  if (devices == nullptr) {
+    return nullptr;
+  }
+  // go through the devices and find the device with the name
+  esp_hid_scan_result_t *r = devices;
+  while (r) {
+    if (r->name == nullptr) {
+      r = r->next;
+      continue;
+    }
+    // see if the provided name is a substring of the device name
+    auto this_name = std::string(r->name);
+    if (this_name.find(name) != std::string::npos) {
+      logger.info("Matched name '{}' to '{}'", name, this_name);
+      return r;
+    }
+    r = r->next;
+  }
+  // we didn't find the device, return nullptr
+  return nullptr;
+}
+
+esp_hid_scan_result_t *get_device_by_address(const std::string &address) {
+  if (devices == nullptr) {
+    return nullptr;
+  }
+  // go through the devices and find the device with the address
+  esp_hid_scan_result_t *r = devices;
+  while (r) {
+    std::string this_address =
+        fmt::format("{:02x}:{:02x}:{:02x}:{:02x}:{:02x}:{:02x}", ESP_BD_ADDR_HEX(r->bda));
+    if (this_address == address || this_address.find(address) != std::string::npos) {
+      logger.info("Matched address '{}' to '{}'", address, this_address);
+      return r;
+    }
+    r = r->next;
+  }
+  // we didn't find the device, return nullptr
+  return nullptr;
 }

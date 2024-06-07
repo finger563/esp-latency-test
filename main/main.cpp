@@ -914,6 +914,18 @@ void build_menu(std::unique_ptr<cli::Menu> &root_menu, espp::Nvs &nvs) {
       "Scan for HID devices");
 }
 
+static bool compare_string(const std::string &a, const std::string &b) {
+  return a.size() == b.size() && std::equal(a.begin(), a.end(), b.begin(), [](char a, char b) {
+           return tolower(a) == tolower(b);
+         });
+}
+
+static bool is_substring(const std::string &a, const std::string &b) {
+  return a.size() <= b.size() && std::equal(a.begin(), a.end(), b.begin(), [](char a, char b) {
+           return tolower(a) == tolower(b);
+         });
+}
+
 esp_hid_scan_result_t *get_device_by_name(const std::string &name) {
   if (devices == nullptr) {
     logger.error("No devices found, run 'scan' first");
@@ -933,7 +945,8 @@ esp_hid_scan_result_t *get_device_by_name(const std::string &name) {
     // see if the provided name is a substring of the device name
     auto this_name = std::string(r->name);
     logger.info("Checking name '{}' against '{}'", name, this_name);
-    if (this_name.contains(name) || name.contains(this_name) || this_name == name) {
+    if (this_name.contains(name) || name.contains(this_name) || this_name == name ||
+        compare_string(name, this_name) || is_substring(name, this_name)) {
       logger.info("Matched name '{}' to '{}'", name, this_name);
       return r;
     }
@@ -954,7 +967,8 @@ esp_hid_scan_result_t *get_device_by_address(const std::string &address) {
     std::string this_address =
         fmt::format("{:02x}:{:02x}:{:02x}:{:02x}:{:02x}:{:02x}", ESP_BD_ADDR_HEX(r->bda));
     logger.info("Checking address '{}' against '{}'", address, this_address);
-    if (this_address == address || this_address.find(address) != std::string::npos) {
+    if (this_address == address || this_address.contains(address) ||
+        compare_string(address, this_address) || is_substring(address, this_address)) {
       logger.info("Matched address '{}' to '{}'", address, this_address);
       return r;
     }

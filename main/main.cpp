@@ -915,15 +915,11 @@ void build_menu(std::unique_ptr<cli::Menu> &root_menu, espp::Nvs &nvs) {
 }
 
 static bool compare_string(const std::string &a, const std::string &b) {
-  return a.size() == b.size() && std::equal(a.begin(), a.end(), b.begin(), [](char a, char b) {
-           return tolower(a) == tolower(b);
-         });
+  return strcmp(a.c_str(), b.c_str()) == 0;
 }
 
 static bool is_substring(const std::string &a, const std::string &b) {
-  return a.size() <= b.size() && std::equal(a.begin(), a.end(), b.begin(), [](char a, char b) {
-           return tolower(a) == tolower(b);
-         });
+  return strcmp(a.c_str(), b.c_str()) == 0;
 }
 
 esp_hid_scan_result_t *get_device_by_name(const std::string &name) {

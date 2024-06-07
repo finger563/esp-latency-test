@@ -916,12 +916,17 @@ void build_menu(std::unique_ptr<cli::Menu> &root_menu, espp::Nvs &nvs) {
 
 esp_hid_scan_result_t *get_device_by_name(const std::string &name) {
   if (devices == nullptr) {
+    logger.error("No devices found, run 'scan' first");
     return nullptr;
   }
   // go through the devices and find the device with the name
   esp_hid_scan_result_t *r = devices;
   while (r) {
+    std::string this_address =
+        fmt::format("{:02x}:{:02x}:{:02x}:{:02x}:{:02x}:{:02x}", ESP_BD_ADDR_HEX(r->bda));
+    logger.info("Checking name '{}' against name of device with address '{}'", name, this_address);
     if (r->name == nullptr) {
+      logger.warn("Device has no name, skipping");
       r = r->next;
       continue;
     }
@@ -939,6 +944,7 @@ esp_hid_scan_result_t *get_device_by_name(const std::string &name) {
 
 esp_hid_scan_result_t *get_device_by_address(const std::string &address) {
   if (devices == nullptr) {
+    logger.error("No devices found, run 'scan' first");
     return nullptr;
   }
   // go through the devices and find the device with the address
@@ -946,6 +952,7 @@ esp_hid_scan_result_t *get_device_by_address(const std::string &address) {
   while (r) {
     std::string this_address =
         fmt::format("{:02x}:{:02x}:{:02x}:{:02x}:{:02x}:{:02x}", ESP_BD_ADDR_HEX(r->bda));
+    logger.info("Checking address '{}' against '{}'", address, this_address);
     if (this_address == address || this_address.find(address) != std::string::npos) {
       logger.info("Matched address '{}' to '{}'", address, this_address);
       return r;

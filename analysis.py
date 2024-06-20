@@ -17,6 +17,23 @@ import matplotlib.pyplot as plt
 
 import argparse
 
+def load_file(filename):
+    try:
+        with open(filename, 'r') as f:
+            lines = f.readlines()
+            # find the index of the header line
+            header_index = next(i for i, line in enumerate(lines) if line.startswith('%'))
+            # skip all lines before the header line
+            lines = lines[header_index+1:]
+            # list comprehension to remove any lines that aren't valid CSV
+            lines = [line for line in lines if len(line.split(',')) == 2 and not ':' in line]
+            data = np.loadtxt(lines, delimiter=',', skiprows=1)
+            return data
+    except Exception as e:
+        print('Error: could not load data from file.')
+        print(e)
+        sys.exit(1)
+
 def main():
     parser = argparse.ArgumentParser(description='Analyze latency data.')
     parser.add_argument('filename', type=str, help='The filename of the latency data.')
@@ -30,23 +47,8 @@ def main():
         print('Error: no filename provided.')
         sys.exit(1)
 
-    # load the file, skip all the lines before the header line, and then load
-    # the rest of the data into a numpy array
-    try:
-        with open(args.filename, 'r') as f:
-            lines = f.readlines()
-            # find the index of the header line
-            header_index = next(i for i, line in enumerate(lines) if line.startswith('%'))
-            # skip all lines before the header line
-            lines = lines[header_index+1:]
-            # list comprehension to remove any lines that aren't valid CSV
-            # TODO: this needs to be more robust
-            lines = [line for line in lines if len(line.split(',')) == 2 and not ':' in line]
-            data = np.loadtxt(lines, delimiter=',', skiprows=1)
-    except Exception as e:
-        print('Error: could not load data from file.')
-        print(e)
-        sys.exit(1)
+    # load the file, parse all the rows for the files to analyze
+    data = load_file(args.filename)
 
     # Calculate the mean and standard deviation
     mean = np.mean(data[:,1])

@@ -18,6 +18,7 @@ from analysis import load_file
 def main():
     parser = argparse.ArgumentParser(description='Analyze latency data.')
     parser.add_argument('csv', type=str, help='The csv file containing a csv of the form: filename, controller name, battery life')
+    parser.add_argument('--title', type=str, help='The title of the plot.', default='Latency Box Plot')
     args = parser.parse_args()
 
     # if no filename is provided, print an error and exit
@@ -64,7 +65,11 @@ def main():
     #Apply default tick formatting so the tick labels all show
     ax.yaxis.set_major_formatter(ticker.ScalarFormatter())
 
-    plt.title('Latency Box Plot')
+    # add dashed grid lines
+    ax.grid(axis='x', linestyle='--')
+    ax.grid(axis='y', linestyle='--')
+
+    plt.title(args.title)
     plt.xlabel('Latency (ms)')
     plt.ylabel('Battery Life (hours)')
     # make sure the legend is outside the plot

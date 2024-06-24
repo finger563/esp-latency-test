@@ -1,0 +1,4 @@
+% filename, controller, battery life
+tests/2024-06-05-ps5-dualsense-hosted-to-esp32.txt, PS5 CFI-ZCT1W, 8
+tests/2024-06-05-xbox-elite-wireless-controller-hosted-to-esp32.txt, Xbox Elite 2 (1797), 38
+tests/2024-06-05-xbox-wireless-controller-hosted-to-esp32.txt, Xbox (1708), 41

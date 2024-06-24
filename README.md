@@ -308,3 +308,5 @@ real time:
 
 Example screenshot analyzing multiple controllers (each with their own latency
 measurement files) at once:
+
+![CleanShot 2024-06-24 at 09 39 59](https://github.com/finger563/esp-latency-test/assets/213467/e60f275d-ab9c-442f-b8bf-1719a8c73994)

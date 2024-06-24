@@ -7,8 +7,12 @@ Code for performing end-to-end latency test for inputs. Can be configured in two
 2. Hosted measurement for end to end with the ESP: actuate the button, then
    measure the time it takes to receive the updated input report.
 
-This repository also contains an [`analysis.py`](./analysis.py) script, which can be used to plot
-a histogram of latency values that are measured from the system.
+This repository also contains a couple python analysis tools:
+* [`analysis.py`](./analysis.py) can be used to plot a histogram of latency
+  values that are measured from the system.
+* [`multi-analysis.py`](./multi-analysis.py) can be used to analyze multiple
+  controller analysis files simultaneously, plotting them in a single box-plot
+  of latency vs battery life according to a meta-config file provided.
 
 <!-- markdown-toc start - Don't edit this section. Run M-x markdown-toc-refresh-toc -->
 **Table of Contents**
@@ -67,7 +71,7 @@ flashing to monitor and plot the latency values in real time. If you do this,
 you can then also save the resultant output to a text file.
 
 This text file can be loaded and parsed by the [`analysis.py`](./analysis.py)
-script.
+script and the [`multi-analysis.py`](./multi-analysis.py) script.
 
 ### Real-time Plotting
 
@@ -119,6 +123,18 @@ code), you can run the python script on it to generate a histogram.
 
 # you can also specify your own title
 (env) ➜  esp-latency-test git:(main) $ python ./analysis.py tests/2024-05-30-15ms-wake.txt --output output/2024-05-30-15ms-wake.png --title "Latency Histogram"
+```
+
+You can also run the `multi-analysis.py` script to analyze multiple controller
+latency files at once. This script will generate a box plot of the latency
+values for each controller, and a scatter plot of latency vs battery life.
+
+``` sh
+# this will simply load in the files listed in the meta-config (csv) file and plot them all
+(env) ➜  esp-latency-test git:(main) $ python ./multi-analysis.py hosted.csv
+
+# you can optionally provide a title for the plot
+(env) ➜  esp-latency-test git:(main) $ python ./multi-analysis.py hosted.csv --title "Latency vs Battery Life"
 ```
 
 ## Cloning
@@ -289,3 +305,6 @@ Example screenshot of the serial plotter running on the output of the app in
 real time:
 
 ![image](https://github.com/finger563/esp-latency-test/assets/213467/4b91a72a-1e9d-4c05-9759-b6e188a32d5d)
+
+Example screenshot analyzing multiple controllers (each with their own latency
+measurement files) at once:

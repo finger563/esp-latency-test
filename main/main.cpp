@@ -30,7 +30,7 @@ static constexpr adc_unit_t ADC_UNIT = CONFIG_SENSOR_ADC_UNIT == 1 ? ADC_UNIT_1 
 static constexpr adc_channel_t ADC_CHANNEL = (adc_channel_t)CONFIG_SENSOR_ADC_CHANNEL;
 static std::vector<espp::AdcConfig> channels{
     // A0 on QtPy ESP32S3
-    {.unit = ADC_UNIT, .channel = ADC_CHANNEL, .attenuation = ADC_ATTEN_DB_12}};
+    {.unit = ADC_UNIT, .channel = ADC_CHANNEL, .attenuation = ADC_ATTEN_DB_6}};
 static std::shared_ptr<espp::OneshotAdc> adc{nullptr};
 
 // things we'll load from NVS
@@ -177,7 +177,7 @@ extern "C" void app_main(void) {
 
 #if CONFIG_DEBUG_PLOT_ALL
   if (use_hid_host) { // cppcheck-suppresss knownConditionTrueFalse
-    logger.warning("DEBUG_PLOT_ALL is not supported with HID Host, will log ADC values instead");
+    logger.warn("DEBUG_PLOT_ALL is not supported with HID Host, will log ADC values instead");
   }
   enum class TestState : uint8_t {
     IDLE = 0,

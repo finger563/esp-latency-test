@@ -26,8 +26,6 @@ static constexpr gpio_num_t button_pin = (gpio_num_t)CONFIG_BUTTON_GPIO;
 static constexpr gpio_num_t extra_gnd_pin = (gpio_num_t)CONFIG_EXTRA_GND_GPIO;
 static int BUTTON_PRESSED_LEVEL = 1;
 static int BUTTON_RELEASED_LEVEL = !BUTTON_PRESSED_LEVEL;
-static constexpr int UPPER_THRESHOLD = CONFIG_UPPER_THRESHOLD;
-static constexpr int LOWER_THRESHOLD = CONFIG_LOWER_THRESHOLD;
 static constexpr adc_unit_t ADC_UNIT = CONFIG_SENSOR_ADC_UNIT == 1 ? ADC_UNIT_1 : ADC_UNIT_2;
 static constexpr adc_channel_t ADC_CHANNEL = (adc_channel_t)CONFIG_SENSOR_ADC_CHANNEL;
 static std::vector<espp::AdcConfig> channels{
@@ -36,6 +34,8 @@ static std::vector<espp::AdcConfig> channels{
 static std::shared_ptr<espp::OneshotAdc> adc{nullptr};
 
 // things we'll load from NVS
+static int upper_threshold = 80;
+static int lower_threshold = 30;
 static bool use_hid_host{false};
 static std::string device_name{};
 static std::string device_address{};
@@ -218,7 +218,7 @@ extern "C" void app_main(void) {
          }
 
          // try to detect the button press
-         if (state == TestState::BUTTON_PRESSED && mv > UPPER_THRESHOLD) {
+         if (state == TestState::BUTTON_PRESSED && mv > upper_threshold) {
            state = TestState::PRESS_DETECTED;
            latency_us = now_us - button_press_start;
          }
@@ -232,7 +232,7 @@ extern "C" void app_main(void) {
          }
 
          // try to detect the button release
-         if (state == TestState::BUTTON_RELEASED && mv < LOWER_THRESHOLD) {
+         if (state == TestState::BUTTON_RELEASED && mv < lower_threshold) {
            state = TestState::RELEASE_DETECTED;
            latency_us = now_us - button_release_start;
          }
@@ -281,7 +281,7 @@ extern "C" void app_main(void) {
         auto now_us = esp_timer_get_time();
         latency_us = now_us - button_press_start;
         // read the ADC
-        if (get_mv() > UPPER_THRESHOLD) {
+        if (get_mv() > upper_threshold) {
           break;
         }
         // timeout
@@ -315,7 +315,7 @@ extern "C" void app_main(void) {
         auto now_us = esp_timer_get_time();
         latency_us = now_us - button_release_start;
         // read the ADC
-        if (get_mv() < LOWER_THRESHOLD) {
+        if (get_mv() < lower_threshold) {
           break;
         }
         // timeout
@@ -340,7 +340,7 @@ std::string config_to_string() {
                         BUTTON_RELEASED_LEVEL);
   config += fmt::format("ADC unit: {}, channel: {}\n", ADC_UNIT, ADC_CHANNEL);
   config +=
-      fmt::format("Upper threshold: {}, lower threshold: {}\n", UPPER_THRESHOLD, LOWER_THRESHOLD);
+      fmt::format("Upper threshold: {}, lower threshold: {}\n", upper_threshold, lower_threshold);
   config += fmt::format("Use HID Host: {}\n", use_hid_host);
   if (use_hid_host) {
     config += fmt::format("\tDevice name: '{}'\n", device_name);
@@ -552,6 +552,21 @@ void load_nvs(espp::Nvs &nvs) {
   }
   logger.info("Loaded use_hid_host: {}", use_hid_host);
 
+  // adc thresholds
+  nvs.get_or_set_var("latency", "upper_threshold", upper_threshold, upper_threshold, ec);
+  if (ec) {
+    logger.error("Failed to get upper_threshold from NVS: {}", ec.message());
+    return;
+  }
+  logger.info("Loaded upper_threshold: {}", upper_threshold);
+
+  nvs.get_or_set_var("latency", "lower_threshold", lower_threshold, lower_threshold, ec);
+  if (ec) {
+    logger.error("Failed to get lower_threshold from NVS: {}", ec.message());
+    return;
+  }
+  logger.info("Loaded lower_threshold: {}", lower_threshold);
+
   // button press level
   nvs.get_or_set_var("latency", "pressed_level", BUTTON_PRESSED_LEVEL, BUTTON_PRESSED_LEVEL, ec);
   if (ec) {
@@ -675,6 +690,44 @@ void build_menu(std::unique_ptr<cli::Menu> &root_menu, espp::Nvs &nvs) {
         }
       },
       "Set the value of pressed_level");
+
+  // menu functions for getting / setting the upper threshold
+  root_menu->Insert(
+      "upper_threshold",
+      [&](std::ostream &out) { out << "upper_threshold: " << upper_threshold << "\n"; },
+      "Get the current value of upper_threshold");
+  root_menu->Insert(
+      "upper_threshold", {"Upper Threshold (0-4095 mV)"},
+      [&](std::ostream &out, int value) {
+        upper_threshold = value;
+        std::error_code ec;
+        nvs.set_var("latency", "upper_threshold", upper_threshold, ec);
+        if (ec) {
+          out << "Failed to set upper_threshold: " << ec.message() << "\n";
+        } else {
+          out << "upper_threshold: " << upper_threshold << "\n";
+        }
+      },
+      "Set the value of upper_threshold");
+
+  // menu functions for getting / setting the lower threshold
+  root_menu->Insert(
+      "lower_threshold",
+      [&](std::ostream &out) { out << "lower_threshold: " << lower_threshold << "\n"; },
+      "Get the current value of lower_threshold");
+  root_menu->Insert(
+      "lower_threshold", {"Lower Threshold (0-4095 mV)"},
+      [&](std::ostream &out, int value) {
+        lower_threshold = value;
+        std::error_code ec;
+        nvs.set_var("latency", "lower_threshold", lower_threshold, ec);
+        if (ec) {
+          out << "Failed to set lower_threshold: " << ec.message() << "\n";
+        } else {
+          out << "lower_threshold: " << lower_threshold << "\n";
+        }
+      },
+      "Set the value of lower_threshold");
 
   // menu functions for getting / setting use_hid_host
   root_menu->Insert(

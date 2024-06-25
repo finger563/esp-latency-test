@@ -44,20 +44,6 @@ menu "Latency Test Configuration"
             The maximum delay / shift in milliseconds between when the button is
             released and when the next button press is triggered.
 
-    config UPPER_THRESHOLD
-        int "Threshold value (mV) for registering a screen on event"
-        default 80
-        help
-            The threshold value for registering a screen on event. The value is
-            in units of millivolts.
-
-    config LOWER_THRESHOLD
-        int "Threshold value (mV) for registering a screen off event"
-        default 30
-        help
-            The threshold value for registering a screen off event. The value is
-            in units of millivolts.
-
     config BUTTON_PRESS_LEVEL
         int "Level which indicates a button press"
         default 0

@@ -7,6 +7,8 @@ Code for performing end-to-end latency test for inputs. Can be configured in two
 2. Hosted measurement for end to end with the ESP: actuate the button, then
    measure the time it takes to receive the updated input report.
 
+See also [esp-usb-latency-test](https://github.com/finger563/esp-usb-latency-test)
+
 This repository also contains a couple python analysis tools:
 * [`analysis.py`](./analysis.py) can be used to plot a histogram of latency
   values that are measured from the system.
@@ -41,7 +43,7 @@ This repository also contains a couple python analysis tools:
 
 ## Hardware Needed
 
-1. ESP32 dev board (code defaults to esp32s3), such as QtPy ESP32S3.
+1. ESP32 dev board (code defaults to esp32), such as QtPy ESP32 PICO.
 2. Dupont wires to connect to button on controller (patch into button and gnd
    signal).
    

@@ -250,7 +250,10 @@ extern "C" void app_main(void) {
 
   logger.info("Starting latency test");
 
-  fmt::print("% time (s), latency (ms)\n");
+  fmt::print("% time (s), latency (ms), num missed inputs\n");
+
+  bool previous_iteration_failed = false;
+  uint32_t num_missed_inputs = 0;
 
   // Let's actually measure latency instead of debugging / logging
   while (true) {
@@ -259,6 +262,16 @@ extern "C" void app_main(void) {
     button_press_start = 0;
     button_release_start = 0;
     static constexpr uint64_t MAX_lATENCY_US = 200 * 1000; // 200ms
+
+    // ensure the button is released if we missed an input / timed out from a
+    // previous iteration
+    if (previous_iteration_failed) {
+      previous_iteration_failed = false;
+      gpio_set_level(button_pin, BUTTON_RELEASED_LEVEL);
+      // ignore this value, we're just waiting for the button to be released
+      std::unique_lock<std::mutex> lock(mutex);
+      cv.wait_for(lock, 500ms);
+    }
 
     // wait for (IDLE_US + shift) microseconds
     std::this_thread::sleep_for(std::chrono::microseconds(IDLE_US + shift));
@@ -273,6 +286,8 @@ extern "C" void app_main(void) {
       auto retval = cv.wait_for(lock, 500ms);
       if (retval == std::cv_status::timeout) {
         logger.error("Timeout waiting for button press to be detected");
+        previous_iteration_failed = true;
+        num_missed_inputs++;
         continue;
       }
       latency_us = esp_timer_get_time() - button_press_start;
@@ -286,13 +301,15 @@ extern "C" void app_main(void) {
         }
         // timeout
         if (latency_us > MAX_lATENCY_US) {
+          previous_iteration_failed = true;
+          num_missed_inputs++;
           break;
         }
       }
     }
 
     // log the latency
-    fmt::print("{:.3f}, {:.3f}\n", elapsed(), latency_us / 1e3f);
+    fmt::print("{:.3f}, {:.3f}, {}\n", elapsed(), latency_us / 1e3f, num_missed_inputs);
 
     // latency reached, release the button after hold time
     std::this_thread::sleep_for(std::chrono::microseconds(HOLD_TIME_US - latency_us));
@@ -307,6 +324,8 @@ extern "C" void app_main(void) {
       auto retval = cv.wait_for(lock, 500ms);
       if (retval == std::cv_status::timeout) {
         logger.error("Timeout waiting for button release to be detected");
+        previous_iteration_failed = true;
+        num_missed_inputs++;
         continue;
       }
       latency_us = esp_timer_get_time() - button_release_start;
@@ -320,13 +339,15 @@ extern "C" void app_main(void) {
         }
         // timeout
         if (latency_us > MAX_lATENCY_US) {
+          previous_iteration_failed = true;
+          num_missed_inputs++;
           break;
         }
       }
     }
 
     // log the latency
-    fmt::print("{:.3f}, {:.3f}\n", elapsed(), latency_us / 1e3f);
+    fmt::print("{:.3f}, {:.3f}, {}\n", elapsed(), latency_us / 1e3f, num_missed_inputs);
   }
 
 #endif // CONFIG_DEBUG_PLOT_ALL

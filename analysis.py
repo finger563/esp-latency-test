@@ -81,10 +81,14 @@ def main():
 
     print('Actions per minute: {:.2f}'.format(actions_per_minute))
 
+    missed_inputs = None
     # if the data has 3 columns, then the third column is the number of missed
-    # inputs. Print out the number of missed inputs (last row of the data)
+    # inputs, which accumulates over time, so the last row is the total number
     if data.shape[1] >= 3:
-        print('Missed inputs: {}'.format(data[-1,2]))
+        missed_inputs = data[-1,2]
+
+    if missed_inputs is not None:
+        print('Missed inputs: {}'.format(missed_inputs))
 
     # Plot the histogram, over the range x = [0, 150]
     plt.hist(data[:,1], bins=100, range=args.range)
@@ -97,8 +101,11 @@ def main():
     plt.axvline(mean - std, color='g', linestyle='dashed', linewidth=1)
     # add mean, std-deviation, and actions per minute to the plot as a nice text
     # box in the upper right corner
+    plot_text = 'Mean: {:.2f} ms\nStd: {:.2f} ms\nActions/min: {:.2f}'.format(mean, std, actions_per_minute)
+    if missed_inputs is not None:
+        plot_text += '\nMissed inputs: {}'.format(missed_inputs)
     plt.text(0.95, 0.95,
-             'Mean: {:.2f} ms\nStd: {:.2f} ms\nActions/min: {:.2f}'.format(mean, std, actions_per_minute),
+             plot_text,
              horizontalalignment='right',
              verticalalignment='top',
              transform=plt.gca().transAxes, bbox=dict(facecolor='white', alpha=0.5))

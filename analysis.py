@@ -14,13 +14,19 @@
 import sys
 import numpy as np
 import matplotlib.pyplot as plt
+import re
 
 import argparse
+
+def escape_ansi(line):
+    ansi_escape = re.compile(r'(?:\x1B[@-_]|[\x80-\x9F])[0-?]*[ -/]*[@-~]')
+    return ansi_escape.sub('', line)
 
 def load_file(filename):
     try:
         with open(filename, 'r') as f:
             lines = f.readlines()
+            lines = [escape_ansi(line) for line in lines]
             # find the index of the header line
             header_index = next(i for i, line in enumerate(lines) if line.startswith('%'))
             # skip all lines before the header line

@@ -22,6 +22,15 @@ def escape_ansi(line):
     ansi_escape = re.compile(r'(?:\x1B[@-_]|[\x80-\x9F])[0-?]*[ -/]*[@-~]')
     return ansi_escape.sub('', line)
 
+def is_line_valid(line):
+    num_elems = len(line.split(','))
+    # support both:
+    # timestamp, latency
+    # timestamp, latency, num_missed_inputs
+    is_valid_num_elems = num_elems in [2, 3]
+    no_invalid_chars = not ':' in line
+    return is_valid_num_elems and no_invalid_chars
+
 def load_file(filename):
     try:
         with open(filename, 'r') as f:
@@ -32,7 +41,7 @@ def load_file(filename):
             # skip all lines before the header line
             lines = lines[header_index+1:]
             # list comprehension to remove any lines that aren't valid CSV
-            lines = [line for line in lines if len(line.split(',')) == 2 and not ':' in line]
+            lines = [line for line in lines if is_line_valid(line)]
             data = np.loadtxt(lines, delimiter=',', skiprows=1)
             return data
     except Exception as e:
@@ -72,6 +81,15 @@ def main():
 
     print('Actions per minute: {:.2f}'.format(actions_per_minute))
 
+    missed_inputs = None
+    # if the data has 3 columns, then the third column is the number of missed
+    # inputs, which accumulates over time, so the last row is the total number
+    if data.shape[1] >= 3:
+        missed_inputs = data[-1,2]
+
+    if missed_inputs is not None:
+        print('Missed inputs: {}'.format(missed_inputs))
+
     # Plot the histogram, over the range x = [0, 150]
     plt.hist(data[:,1], bins=100, range=args.range)
     plt.title(args.title)
@@ -83,8 +101,11 @@ def main():
     plt.axvline(mean - std, color='g', linestyle='dashed', linewidth=1)
     # add mean, std-deviation, and actions per minute to the plot as a nice text
     # box in the upper right corner
+    plot_text = 'Mean: {:.2f} ms\nStd: {:.2f} ms\nActions/min: {:.2f}'.format(mean, std, actions_per_minute)
+    if missed_inputs is not None:
+        plot_text += '\nMissed inputs: {}'.format(missed_inputs)
     plt.text(0.95, 0.95,
-             'Mean: {:.2f} ms\nStd: {:.2f} ms\nActions/min: {:.2f}'.format(mean, std, actions_per_minute),
+             plot_text,
              horizontalalignment='right',
              verticalalignment='top',
              transform=plt.gca().transAxes, bbox=dict(facecolor='white', alpha=0.5))

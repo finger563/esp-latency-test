@@ -22,8 +22,8 @@ using namespace std::chrono_literals;
 static espp::Logger logger({.tag = "esp-latency-test", .level = espp::Logger::Verbosity::DEBUG});
 
 // variables loaded from menuconfig
-static constexpr gpio_num_t button_pin = (gpio_num_t)CONFIG_BUTTON_GPIO;
-static constexpr gpio_num_t extra_gnd_pin = (gpio_num_t)CONFIG_EXTRA_GND_GPIO;
+static gpio_num_t button_pin = (gpio_num_t)CONFIG_BUTTON_GPIO;
+static gpio_num_t extra_gnd_pin = (gpio_num_t)CONFIG_EXTRA_GND_GPIO;
 static int BUTTON_PRESSED_LEVEL = 1;
 static int BUTTON_RELEASED_LEVEL = !BUTTON_PRESSED_LEVEL;
 static constexpr adc_unit_t ADC_UNIT = CONFIG_SENSOR_ADC_UNIT == 1 ? ADC_UNIT_1 : ADC_UNIT_2;
@@ -359,9 +359,6 @@ std::string config_to_string() {
   config += fmt::format("Button pin: {}, extra GND pin: {}\n", (int)button_pin, (int)extra_gnd_pin);
   config += fmt::format("Button pressed level: {}, released level: {}\n", BUTTON_PRESSED_LEVEL,
                         BUTTON_RELEASED_LEVEL);
-  config += fmt::format("ADC unit: {}, channel: {}\n", ADC_UNIT, ADC_CHANNEL);
-  config +=
-      fmt::format("Upper threshold: {}, lower threshold: {}\n", upper_threshold, lower_threshold);
   config += fmt::format("Use HID Host: {}\n", use_hid_host);
   if (use_hid_host) {
     config += fmt::format("\tDevice name: '{}'\n", device_name);
@@ -377,6 +374,10 @@ std::string config_to_string() {
     config += fmt::format("\tBLE max interval: {} = {} ms\n", ble_max_interval_units,
                           ble_interval_units_to_ms(ble_max_interval_units));
     config += fmt::format("\tBT QoS: {} = {} ms\n", bt_qos_units, bt_qos_units_to_ms(bt_qos_units));
+  } else {
+    config += fmt::format("ADC unit: {}, channel: {}\n", ADC_UNIT, ADC_CHANNEL);
+    config +=
+        fmt::format("Upper threshold: {}, lower threshold: {}\n", upper_threshold, lower_threshold);
   }
   return config;
 }
@@ -588,6 +589,22 @@ void load_nvs(espp::Nvs &nvs) {
   }
   logger.info("Loaded lower_threshold: {}", lower_threshold);
 
+  // button gpio
+  nvs.get_or_set_var("latency", "button_pin", (int &)button_pin, (int)button_pin, ec);
+  if (ec) {
+    logger.error("Failed to get button_pin from NVS: {}", ec.message());
+    return;
+  }
+  logger.info("Loaded button_pin: {}", (int)button_pin);
+
+  // extra gnd gpio
+  nvs.get_or_set_var("latency", "extra_gnd_pin", (int &)extra_gnd_pin, (int)extra_gnd_pin, ec);
+  if (ec) {
+    logger.error("Failed to get extra_gnd_pin from NVS: {}", ec.message());
+    return;
+  }
+  logger.info("Loaded extra_gnd_pin: {}", (int)extra_gnd_pin);
+
   // button press level
   nvs.get_or_set_var("latency", "pressed_level", BUTTON_PRESSED_LEVEL, BUTTON_PRESSED_LEVEL, ec);
   if (ec) {
@@ -683,9 +700,54 @@ void build_menu(std::unique_ptr<cli::Menu> &root_menu, espp::Nvs &nvs) {
       "adc", [&](std::ostream &out) { out << fmt::format("ADC value: {:.2f} mV\n", get_mv()); },
       "Read the current ADC value");
 
+  // menu function for setting the button pin
+  root_menu->Insert(
+      "button_pin", [&](std::ostream &out) { out << "button_pin: " << (int)button_pin << "\n"; },
+      "Get the current value of button_pin");
+
+  root_menu->Insert(
+      "button_pin", {"Button Pin (0-39)"},
+      [&](std::ostream &out, int value) {
+        button_pin = (gpio_num_t)value;
+        std::error_code ec;
+        nvs.set_var("latency", "button_pin", (int)button_pin, ec);
+        if (ec) {
+          out << "Failed to set button_pin: " << ec.message() << "\n";
+        } else {
+          out << "button_pin: " << (int)button_pin << "\n";
+        }
+        // now ensure the pin is set to output
+        gpio_set_direction(button_pin, GPIO_MODE_OUTPUT);
+        gpio_set_level(button_pin, BUTTON_RELEASED_LEVEL);
+      },
+      "Set the value of button_pin");
+
+  // menu function for setting the extra gnd pin
+  root_menu->Insert(
+      "extra_gnd_pin",
+      [&](std::ostream &out) { out << "extra_gnd_pin: " << (int)extra_gnd_pin << "\n"; },
+      "Get the current value of extra_gnd_pin");
+
+  root_menu->Insert(
+      "extra_gnd_pin", {"Extra GND Pin (0-39)"},
+      [&](std::ostream &out, int value) {
+        extra_gnd_pin = (gpio_num_t)value;
+        std::error_code ec;
+        nvs.set_var("latency", "extra_gnd_pin", (int)extra_gnd_pin, ec);
+        if (ec) {
+          out << "Failed to set extra_gnd_pin: " << ec.message() << "\n";
+        } else {
+          out << "extra_gnd_pin: " << (int)extra_gnd_pin << "\n";
+        }
+        // now ensure the pin is set to output
+        gpio_set_direction(extra_gnd_pin, GPIO_MODE_OUTPUT);
+        gpio_set_level(extra_gnd_pin, 0);
+      },
+      "Set the value of extra_gnd_pin");
+
   // menu function for setting the button output value
   root_menu->Insert(
-      "button", {"Button Value (0/1)"},
+      "button_out", {"Button Value (0/1)"},
       [&](std::ostream &out, int value) {
         gpio_set_level(button_pin, value);
         out << "Button set to " << value << "\n";

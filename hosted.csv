@@ -2,3 +2,4 @@
 tests/2024-06-05-ps5-dualsense-hosted-to-esp32.txt, PS5 CFI-ZCT1W, 8
 tests/2024-06-05-xbox-wireless-controller-hosted-to-esp32.txt, Xbox (1708), 30
 tests/2024-06-05-xbox-elite-wireless-controller-hosted-to-esp32.txt, Xbox Elite 2 (1797), 40
+tests/2024-06-25-niji-option-1-test-21-23.0mA-filter-0.1-offset-3ms.txt, Niji Option 1, 44

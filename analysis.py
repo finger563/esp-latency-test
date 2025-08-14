@@ -66,9 +66,12 @@ def main():
     data = load_file(args.filename)
 
     # Calculate the mean and standard deviation
+    median = np.median(data[:,1])
     mean = np.mean(data[:,1])
     std = np.std(data[:,1])
 
+    # Print the results
+    print('Median: {:.2f} ms'.format(median))
     print('Mean: {:.2f} ms'.format(mean))
     print('Standard deviation: {:.2f} ms'.format(std))
 
@@ -95,13 +98,18 @@ def main():
     plt.title(args.title)
     plt.xlabel('Latency (ms)')
     plt.ylabel('Count')
-    # add mean and std to the plot
+    # add median, mean and std to the plot
+    plt.axvline(median, color='y', linestyle='dashed', linewidth=1)
     plt.axvline(mean, color='r', linestyle='dashed', linewidth=1)
     plt.axvline(mean + std, color='g', linestyle='dashed', linewidth=1)
     plt.axvline(mean - std, color='g', linestyle='dashed', linewidth=1)
     # add mean, std-deviation, and actions per minute to the plot as a nice text
     # box in the upper right corner
-    plot_text = 'Mean: {:.2f} ms\nStd: {:.2f} ms\nActions/min: {:.2f}'.format(mean, std, actions_per_minute)
+    plot_text = ''
+    plot_text += 'Median: {:.2f} ms\n'.format(median)
+    plot_text += 'Mean: {:.2f} ms\n'.format(mean)
+    plot_text += 'Std: {:.2f} ms\n'.format(std)
+    plot_text += 'Actions/min: {:.2f}'.format(actions_per_minute)
     if missed_inputs is not None:
         plot_text += '\nMissed inputs: {}'.format(missed_inputs)
     plt.text(0.95, 0.95,
